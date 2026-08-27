@@ -4,7 +4,9 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
-from src.sleeper import clean_player_name, fetch_sleeper_players
+import pandas as pd
+
+from src.sleeper import clean_player_name, fetch_sleeper_players, parse_sleeper_catalog
 
 
 def test_clean_lowercase():
@@ -113,3 +115,71 @@ def test_fetch_force_refresh_ignores_cache():
 
         m.assert_called_once()
         assert "123" in result
+
+
+# ---------------------------------------------------------------------------
+# parse_sleeper_catalog tests
+# ---------------------------------------------------------------------------
+RAW_CATALOG = {
+    "1": {
+        "full_name": "Patrick Mahomes",
+        "position": "QB",
+        "team": "KC",
+        "search_rank": 2,
+        "years_exp": 7,
+        "status": "Active",
+        "player_id": "1",
+    },
+    "2": {
+        "full_name": "Tyreek Hill",
+        "position": "WR",
+        "team": "MIA",
+        "search_rank": 5,
+        "years_exp": 8,
+        "status": "Active",
+        "player_id": "2",
+    },
+    "3": {
+        "full_name": "Retired Guy",
+        "position": "QB",
+        "team": None,
+        "search_rank": 99999,
+        "years_exp": 20,
+        "status": "Retired",
+        "player_id": "3",
+    },
+}
+
+
+def test_parse_returns_dataframe():
+    """parse_sleeper_catalog returns a DataFrame."""
+    df = parse_sleeper_catalog(RAW_CATALOG)
+    assert isinstance(df, pd.DataFrame)
+
+
+def test_parse_filters_by_position():
+    """Only skill positions are returned."""
+    df = parse_sleeper_catalog(RAW_CATALOG, positions=["QB", "WR"])
+    assert len(df) == 2
+    assert set(df["position"]) == {"QB", "WR"}
+
+
+def test_parse_renames_full_name():
+    """full_name is renamed to player_name for downstream consistency."""
+    df = parse_sleeper_catalog(RAW_CATALOG, positions=["QB"])
+    assert "player_name" in df.columns
+    assert df.iloc[0]["player_name"] == "Patrick Mahomes"
+
+
+def test_parse_adds_norm_columns():
+    """norm_name and norm_position columns are added."""
+    df = parse_sleeper_catalog(RAW_CATALOG, positions=["QB"])
+    assert "norm_name" in df.columns
+    assert df.iloc[0]["norm_name"] == "patrick mahomes"
+    assert df.iloc[0]["norm_position"] == "QB"
+
+
+def test_parse_filters_status():
+    """Only Active players are returned by default."""
+    df = parse_sleeper_catalog(RAW_CATALOG)
+    assert "Retired" not in df["status"].values
