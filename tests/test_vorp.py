@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.vorp import classify_signal, calculate_vorb
+from src.vorp import classify_signal, calculate_vorb, build_draft_board
 
 
 def test_major_value():
@@ -118,3 +118,44 @@ def test_vorp_pos_rank():
     assert by_name.loc["WR1", "pos_rank"] == 1
     assert by_name.loc["WR2", "pos_rank"] == 2
     assert by_name.loc["RB1", "pos_rank"] == 1
+
+
+# ---------------------------------------------------------------------------
+# build_draft_board tests
+# ---------------------------------------------------------------------------
+def test_build_draft_board_adds_adp_delta():
+    """adp_delta = search_rank - vorp_rank."""
+    df = _player_df([
+        {"player_name": "A", "position_proj": "WR", "proj_points": 300.0, "search_rank": 10.0},
+        {"player_name": "B", "position_proj": "RB", "proj_points": 200.0, "search_rank": 5.0},
+    ])
+    baselines = {"WR": 200.0, "RB": 200.0}
+    board = build_draft_board(df, baselines)
+    by_name = board.set_index("player_name")
+    # A: VORP=100, vorp_rank=1, search_rank=10 -> adp_delta = 10 - 1 = 9
+    assert by_name.loc["A", "adp_delta"] == 9.0
+    # B: VORP=0, vorp_rank=2, search_rank=5 -> adp_delta = 5 - 2 = 3
+    assert by_name.loc["B", "adp_delta"] == 3.0
+
+
+def test_build_draft_board_adds_signal():
+    """Signal is classified from adp_delta."""
+    df = _player_df([
+        {"player_name": "A", "position_proj": "WR", "proj_points": 300.0, "search_rank": 20.0},
+    ])
+    board = build_draft_board(df, {"WR": 200.0})
+    by_name = board.set_index("player_name")
+    # A: VORP=100, vorp_rank=1, search_rank=20 -> adp_delta = 19 -> Major Value
+    assert "Major Value" in by_name.loc["A", "signal"]
+
+
+def test_build_draft_board_output_columns():
+    """Output has all required columns."""
+    df = _player_df([
+        {"player_name": "A", "position_proj": "WR", "proj_points": 300.0, "search_rank": 10.0},
+    ])
+    board = build_draft_board(df, {"WR": 200.0})
+    required = {"player_name", "position_proj", "proj_points", "vorp",
+                "vorp_rank", "pos_rank", "pos_label", "search_rank",
+                "adp_delta", "signal"}
+    assert required.issubset(set(board.columns))

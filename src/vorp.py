@@ -60,6 +60,27 @@ def calculate_vorb(
 
     return result.sort_values("vorp_rank").reset_index(drop=True)
 
+
+def build_draft_board(
+    df: pd.DataFrame,
+    baselines: dict[str, float],
+) -> pd.DataFrame:
+    """Build a full draft board with VORP, ADP delta, and arbitrage signals.
+
+    Parameters
+    ----------
+    df : DataFrame with ``player_name``, ``position_proj``, ``proj_points``, ``search_rank``.
+    baselines : dict mapping position -> baseline points.
+
+    Returns
+    -------
+    DataFrame sorted by vorp_rank with adp_delta and signal columns added.
+    """
+    board = calculate_vorb(df, baselines)
+    board["adp_delta"] = board["search_rank"].astype(float) - board["vorp_rank"].astype(float)
+    board["signal"] = board["adp_delta"].apply(classify_signal)
+    return board.sort_values("vorp_rank").reset_index(drop=True)
+
     """Classify an ADP delta into an emoji signal.
 
     Parameters
