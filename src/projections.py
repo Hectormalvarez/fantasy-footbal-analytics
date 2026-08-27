@@ -6,7 +6,7 @@ import pandas as pd
 import nflreadpy as nfl
 
 from src.scoring import calculate_ppr_points, project_17_game_ppr
-from src.sleeper import fetch_sleeper_players, parse_sleeper_catalog
+from src.sleeper import fetch_sleeper_players, parse_sleeper_catalog, clean_player_name
 
 SKILL_POSITIONS = ["QB", "RB", "WR", "TE"]
 
@@ -107,7 +107,6 @@ def impute_missing_rookies(
     candidates = sleeper_catalog.copy()
     candidates["player_id_str"] = candidates["player_id"].astype(str)
     # Normalize names for matching
-    from src.sleeper import clean_player_name
     candidates["norm_name"] = candidates["player_name"].apply(clean_player_name)
     existing_norm = {clean_player_name(n) for n in existing_names}
 
