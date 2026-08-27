@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.scoring import calculate_ppr_points
+from src.scoring import calculate_ppr_points, project_17_game_ppr
 
 # ---------------------------------------------------------------------------
 # Shared fixture: zeroed-out stat row
@@ -121,3 +121,56 @@ def test_multi_row_batch():
     assert pts.iloc[0] == 9.0
     # Row 1: 200*.04 + 2*4 + 1*(-2) = 8 + 8 - 2 = 14.0
     assert pts.iloc[1] == 14.0
+
+
+
+# ---------------------------------------------------------------------------
+# project_17_game_ppr tests
+# ---------------------------------------------------------------------------
+def test_project_simple_17_game_pace():
+    """100 PPR pts in 10 games -> (100/10)*17 = 170.0 projected."""
+    df = pd.DataFrame({"total_ppr": [100.0], "games": [10]})
+    result = project_17_game_ppr(df)
+    assert result.iloc[0] == 170.0
+
+
+def test_project_full_season_no_scale():
+    """170 PPR pts in 17 games -> (170/17)*17 = 170.0 (no scaling)."""
+    df = pd.DataFrame({"total_ppr": [170.0], "games": [17]})
+    result = project_17_game_ppr(df)
+    assert result.iloc[0] == 170.0
+
+
+def test_project_floor_at_min_games():
+    """Player with 3 games: divisor floored at 6.
+    60 PPR pts -> (60/6)*17 = 170.0, NOT (60/3)*17 = 340.0."""
+    df = pd.DataFrame({"total_ppr": [60.0], "games": [3]})
+    result = project_17_game_ppr(df)
+    assert result.iloc[0] == 170.0
+
+
+def test_project_floor_exactly_at_threshold():
+    """Player with exactly min_games (6): no floor applied.
+    60 PPR pts -> (60/6)*17 = 170.0."""
+    df = pd.DataFrame({"total_ppr": [60.0], "games": [6]})
+    result = project_17_game_ppr(df)
+    assert result.iloc[0] == 170.0
+
+
+def test_project_custom_min_games():
+    """Custom min_games=4: 40 PPR pts in 2 games -> (40/4)*17 = 170.0."""
+    df = pd.DataFrame({"total_ppr": [40.0], "games": [2]})
+    result = project_17_game_ppr(df, min_games=4)
+    assert result.iloc[0] == 170.0
+
+
+def test_project_multi_row():
+    """Projection works across multiple rows."""
+    df = pd.DataFrame({
+        "total_ppr": [170.0, 100.0, 60.0],
+        "games":     [17,     10,    3],
+    })
+    result = project_17_game_ppr(df)
+    assert result.iloc[0] == 170.0   # (170/17)*17
+    assert result.iloc[1] == 170.0   # (100/10)*17
+    assert result.iloc[2] == 170.0   # (60/6)*17  — floor kicks in

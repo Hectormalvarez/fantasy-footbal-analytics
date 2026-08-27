@@ -34,3 +34,19 @@ def calculate_ppr_points(df: pd.DataFrame) -> pd.Series:
     pts += fumbles_lost * (-2.0)
 
     return pts
+
+
+def project_17_game_ppr(df: pd.DataFrame, min_games: int = 6) -> pd.Series:
+    """Project total PPR points to a full 17-game season.
+
+    Parameters
+    ----------
+    df : DataFrame with ``total_ppr`` and ``games`` columns.
+    min_games : Floor for the games divisor to avoid small-sample inflation.
+
+    Returns
+    -------
+    pd.Series of projected 17-game points.
+    """
+    effective_games = df["games"].clip(lower=min_games)
+    return (df["total_ppr"] / effective_games) * 17.0
