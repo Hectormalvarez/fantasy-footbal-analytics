@@ -12,7 +12,7 @@ import sys
 
 import pandas as pd
 
-from src.sleeper import fetch_sleeper_players, parse_sleeper_catalog
+from src.sleeper import fetch_sleeper_players, parse_sleeper_catalog, clean_player_name
 from src.vorp import build_draft_board
 from src.draft import generate_contingency_sheet
 
@@ -60,8 +60,8 @@ def _load_draft_board(
     catalog = parse_sleeper_catalog(raw_sleeper)
 
     catalog_rank = catalog[["player_name", "position", "search_rank", "team"]].copy()
-    catalog_rank["norm_name"] = catalog_rank["player_name"].str.lower().str.strip()
-    projections["norm_name"] = projections["player_name"].str.lower().str.strip()
+    catalog_rank["norm_name"] = catalog_rank["player_name"].apply(clean_player_name)
+    projections["norm_name"] = projections["player_name"].apply(clean_player_name)
 
     merged = projections.merge(
         catalog_rank[["norm_name", "position", "search_rank", "team"]],

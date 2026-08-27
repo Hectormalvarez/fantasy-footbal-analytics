@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import unicodedata
 
 import pandas as pd
 import requests
@@ -18,12 +19,22 @@ _SUFFIX_PATTERN = re.compile(
 _APOSTROPHE_RE = re.compile(r"['\u2019\u2018]")
 
 
+def _strip_accents(text: str) -> str:
+    """Strip Unicode accents via NFKD decomposition (e.g. é -> e)."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text)
+        if unicodedata.category(c) != "Mn"
+    )
+
+
 def clean_player_name(name: str) -> str:
     """Normalize a player name for fuzzy matching.
 
-    Steps: lowercase -> strip suffixes -> remove apostrophes -> collapse whitespace.
+    Steps: strip accents -> lowercase -> strip suffixes -> remove apostrophes
+    -> collapse whitespace.
     """
-    s = name.strip().lower()
+    s = _strip_accents(name.strip())
+    s = s.lower()
     s = _SUFFIX_PATTERN.sub("", s)
     s = _APOSTROPHE_RE.sub("", s)
     s = re.sub(r"\s+", " ", s).strip()

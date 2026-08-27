@@ -174,6 +174,27 @@ def test_impute_filters_to_active_only():
     assert len(result) == 0
 
 
+def test_impute_filters_out_null_team():
+    """Active players with null team (unsigned free agents) are not imputed."""
+    catalog = _sleeper_catalog_df([
+        {"player_name": "Unsigned FA", "position": "WR", "team": None,
+         "search_rank": 20, "years_exp": 3, "player_id": "70", "status": "Active"},
+    ])
+    result = impute_missing_rookies(_veterans_df([]), catalog)
+    assert len(result) == 0
+
+
+def test_impute_keeps_null_team_for_high_profile():
+    """Even top-ranked players without a team are NOT imputed (status != Active+team)."""
+    catalog = _sleeper_catalog_df([
+        {"player_name": "Top Rookie", "position": "RB", "team": None,
+         "search_rank": 4, "years_exp": 0, "player_id": "80", "status": "Active"},
+    ])
+    result = impute_missing_rookies(_veterans_df([]), catalog)
+    # Requires non-null team — no team means not imputed
+    assert len(result) == 0
+
+
 # ---------------------------------------------------------------------------
 # load_historical_stats tests (mocked nflreadpy)
 # ---------------------------------------------------------------------------

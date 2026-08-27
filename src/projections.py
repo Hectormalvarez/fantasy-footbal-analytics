@@ -116,6 +116,7 @@ def impute_missing_rookies(
         & (~candidates["norm_name"].isin(existing_norm))
         & (candidates["search_rank"].astype(float) <= rank_threshold)
         & (candidates["status"] == "Active")
+        & (candidates["team"].notna())
     ].copy()
 
     if candidates.empty:
@@ -145,6 +146,9 @@ def generate_full_projections(
     stats["total_ppr"] = calculate_ppr_points(stats)
     stats["proj_points"] = project_17_game_ppr(stats)
 
+    # Filter out veterans without a team (retired / unsigned free agents)
+    stats = stats[stats["team"].notna() & (stats["team"] != "")].copy()
+
     veterans = stats[["player_name", "position", "team", "proj_points",
                        "player_id"]].copy()
 
@@ -157,7 +161,10 @@ def generate_full_projections(
     # 3. Combine, deduplicate (keep veteran stats), export
     combined = pd.concat([veterans, imputed], ignore_index=True)
     combined = combined.sort_values("proj_points", ascending=False)
-    combined = combined.drop_duplicates(subset=["player_name", "position"], keep="first")
+    combined["norm_name"] = combined["player_name"].apply(
+        lambda n: clean_player_name(str(n))
+    )
+    combined = combined.drop_duplicates(subset=["norm_name", "position"], keep="first")
     combined = combined.sort_values("proj_points", ascending=False).reset_index(drop=True)
 
     output = combined[["player_name", "position", "team", "proj_points"]].copy()

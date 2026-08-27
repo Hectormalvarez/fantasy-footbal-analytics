@@ -49,6 +49,16 @@ def test_clean_multi_space():
     assert clean_player_name("Kyler   Murray") == "kyler murray"
 
 
+def test_clean_accent_stripping():
+    """Unicode accents are stripped (e.g. é -> e)."""
+    assert clean_player_name("Audric Estimé") == "audric estime"
+
+
+def test_clean_period_in_name():
+    """Periods in abbreviated names are preserved (consistent between sources)."""
+    assert clean_player_name("A.J. Brown") == "a.j. brown"
+
+
 
 # ---------------------------------------------------------------------------
 # fetch_sleeper_players tests
