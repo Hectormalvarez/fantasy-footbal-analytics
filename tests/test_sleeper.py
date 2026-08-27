@@ -1,6 +1,10 @@
 """Tests for src/sleeper.py — Sleeper API, catalog parsing, name normalization."""
 
-from src.sleeper import clean_player_name
+import os
+import tempfile
+from unittest.mock import MagicMock, patch
+
+from src.sleeper import clean_player_name, fetch_sleeper_players
 
 
 def test_clean_lowercase():
@@ -41,3 +45,71 @@ def test_clean_hyphenated():
 def test_clean_multi_space():
     """Multiple spaces collapse to one."""
     assert clean_player_name("Kyler   Murray") == "kyler murray"
+
+
+
+# ---------------------------------------------------------------------------
+# fetch_sleeper_players tests
+# ---------------------------------------------------------------------------
+FAKE_PLAYERS = {"123": {"full_name": "Test Player", "position": "QB"}}
+
+
+def test_fetch_returns_dict():
+    """fetch_sleeper_players returns a dict."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_PLAYERS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.sleeper.requests.get", return_value=mock_resp):
+        result = fetch_sleeper_players(cache_path="/tmp/fake_cache.json")
+    assert isinstance(result, dict)
+    assert "123" in result
+
+
+def test_fetch_caches_to_disk():
+    """On a fresh fetch, the result is written to cache_path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = os.path.join(tmpdir, "test_cache.json")
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = FAKE_PLAYERS
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("src.sleeper.requests.get", return_value=mock_resp):
+            fetch_sleeper_players(cache_path=cache)
+
+        assert os.path.exists(cache)
+
+
+def test_fetch_loads_from_cache():
+    """If cache exists and force_refresh=False, API is NOT called."""
+    import json as _json
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = os.path.join(tmpdir, "test_cache.json")
+        with open(cache, "w") as f:
+            _json.dump(FAKE_PLAYERS, f)
+
+        with patch("src.sleeper.requests.get") as m:
+            result = fetch_sleeper_players(cache_path=cache, force_refresh=False)
+
+        m.assert_not_called()
+        assert result == FAKE_PLAYERS
+
+
+def test_fetch_force_refresh_ignores_cache():
+    """force_refresh=True always hits the API."""
+    import json as _json
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache = os.path.join(tmpdir, "test_cache.json")
+        with open(cache, "w") as f:
+            _json.dump({"old": True}, f)
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = FAKE_PLAYERS
+        mock_resp.raise_for_status = MagicMock()
+
+        with patch("src.sleeper.requests.get", return_value=mock_resp) as m:
+            result = fetch_sleeper_players(cache_path=cache, force_refresh=True)
+
+        m.assert_called_once()
+        assert "123" in result
