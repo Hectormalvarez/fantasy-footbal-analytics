@@ -172,3 +172,65 @@ def test_impute_filters_to_active_only():
     ])
     result = impute_missing_rookies(_veterans_df([]), catalog)
     assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# load_historical_stats tests (mocked nflreadpy)
+# ---------------------------------------------------------------------------
+from unittest.mock import MagicMock, patch
+
+
+def _fake_polars_rows(named=True):
+    """Return fake rows from a Polars-like DataFrame."""
+    rows = [
+        {"player_id": "00-001", "player_name": "L.Jackson", "player_display_name": "Lamar Jackson",
+         "position": "QB", "recent_team": "BAL", "games": 17,
+         "passing_yards": 3900, "passing_tds": 24, "passing_interceptions": 4,
+         "sack_fumbles_lost": 1, "rushing_yards": 800, "rushing_tds": 5,
+         "rushing_fumbles_lost": 0, "receiving_yards": 0, "receiving_tds": 0,
+         "receptions": 0, "receiving_fumbles_lost": 0},
+        {"player_id": "00-002", "player_name": "J.Chase", "player_display_name": "Ja'Marr Chase",
+         "position": "WR", "recent_team": "CIN", "games": 17,
+         "passing_yards": 0, "passing_tds": 0, "passing_interceptions": 0,
+         "sack_fumbles_lost": 0, "rushing_yards": 0, "rushing_tds": 0,
+         "rushing_fumbles_lost": 0, "receiving_yards": 1300, "receiving_tds": 12,
+         "receptions": 110, "receiving_fumbles_lost": 1},
+        {"player_id": "00-003", "player_name": "Kicker", "player_display_name": "Harrison Butker",
+         "position": "K", "recent_team": "KC", "games": 17,
+         "passing_yards": 0, "passing_tds": 0, "passing_interceptions": 0,
+         "sack_fumbles_lost": 0, "rushing_yards": 0, "rushing_tds": 0,
+         "rushing_fumbles_lost": 0, "receiving_yards": 0, "receiving_tds": 0,
+         "receptions": 0, "receiving_fumbles_lost": 0},
+    ]
+    return rows
+
+
+def test_load_historical_stats_filters_positions():
+    """load_historical_stats filters to skill positions only."""
+    fake_rows = _fake_polars_rows()
+    mock_polars = MagicMock()
+    mock_polars.rows.return_value = fake_rows
+
+    with patch("src.projections.nfl.load_player_stats", return_value=mock_polars):
+        from src.projections import load_historical_stats
+        result = load_historical_stats(2024)
+
+    positions = set(result["position"].unique())
+    assert "K" not in positions
+    assert "QB" in positions
+    assert "WR" in positions
+
+
+def test_load_historical_stats_extracts_display_name():
+    """player_display_name is used as player_name."""
+    fake_rows = _fake_polars_rows()
+    mock_polars = MagicMock()
+    mock_polars.rows.return_value = fake_rows
+
+    with patch("src.projections.nfl.load_player_stats", return_value=mock_polars):
+        from src.projections import load_historical_stats
+        result = load_historical_stats(2024)
+
+    names = result["player_name"].tolist()
+    assert "Lamar Jackson" in names
+    assert "Ja'Marr Chase" in names
