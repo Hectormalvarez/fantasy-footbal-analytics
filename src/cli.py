@@ -15,6 +15,12 @@ import pandas as pd
 from src.sleeper import fetch_sleeper_players, parse_sleeper_catalog, clean_player_name
 from src.vorp import build_draft_board
 from src.draft import generate_contingency_sheet
+from src.visuals import (
+    render_round_matrix,
+    render_arbitrage_scatter,
+    render_positional_cliffs,
+    export_styled_html_board,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--fall-buffer", type=int, default=8,
         dest="fall_buffer",
         help="Max picks to catch falling value (default: 8).",
+    )
+    parser.add_argument(
+        "--visuals", action="store_true", default=False,
+        help="Generate visual cheat sheets (PNG + HTML) alongside CSV/TXT output.",
     )
     return parser
 
@@ -76,13 +86,44 @@ def _load_draft_board(
 
     merged.rename(columns={"position": "position_proj"}, inplace=True)
 
+    # ── 14-team 2-FLEX dynamic baseline calculation ──────────────────────
+    # Dedicated starter cutoffs: QB14, RB28, WR28, TE14
+    starter_cutoffs = {"QB": 14, "RB": 28, "WR": 28, "TE": 14}
+
     baselines = {}
-    for pos in ["QB", "RB", "WR", "TE"]:
+    for pos, cutoff in starter_cutoffs.items():
         pos_df = merged[merged["position_proj"] == pos].sort_values(
             "proj_points", ascending=False
         )
-        baseline_idx = min(11, len(pos_df) - 1)
-        baselines[pos] = pos_df.iloc[baseline_idx]["proj_points"] if len(pos_df) > 0 else 0.0
+        baseline_idx = min(cutoff - 1, len(pos_df) - 1)
+        baselines[pos] = (
+            pos_df.iloc[baseline_idx]["proj_points"] if len(pos_df) > 0 else 0.0
+        )
+
+    # Flex pool: remaining RBs, WRs, TEs after dedicated starters are removed
+    flex_positions = ["RB", "WR", "TE"]
+    flex_dfs = []
+    for pos in flex_positions:
+        pos_df = merged[merged["position_proj"] == pos].sort_values(
+            "proj_points", ascending=False
+        )
+        cutoff = starter_cutoffs[pos]
+        if len(pos_df) > cutoff:
+            flex_dfs.append(pos_df.iloc[cutoff:])
+
+    if flex_dfs:
+        flex_pool = pd.concat(flex_dfs).sort_values("proj_points", ascending=False)
+        # Flex baseline: projected points of the 28th flex player
+        flex_idx = min(27, len(flex_pool) - 1)
+        flex_baseline = (
+            flex_pool.iloc[flex_idx]["proj_points"] if len(flex_pool) > 0 else 0.0
+        )
+    else:
+        flex_baseline = 0.0
+
+    # Apply flex baseline to RB, WR, TE (take the min with their starter baseline)
+    for pos in ["RB", "WR", "TE"]:
+        baselines[pos] = min(baselines[pos], flex_baseline)
 
     return build_draft_board(merged, baselines)
 
@@ -168,6 +209,19 @@ def main(argv: list[str] | None = None) -> None:
     with open(txt_path, "w") as f:
         f.write(formatted)
     print(f"Exported: {txt_path}")
+
+    # ── Optional visual cheat sheets ──────────────────────────────────────
+    if args.visuals:
+        print("\nGenerating visual cheat sheets ...")
+        render_round_matrix(sheet, args.slot)
+        print(f"  -> data/cheat_sheet_slot_{args.slot}.png")
+        render_arbitrage_scatter(board)
+        print("  -> data/market_arbitrage.png")
+        render_positional_cliffs(board)
+        print("  -> data/positional_cliffs.png")
+        export_styled_html_board(board)
+        print("  -> data/draft_board_styled.html")
+        print("Done.")
 
 
 if __name__ == "__main__":
