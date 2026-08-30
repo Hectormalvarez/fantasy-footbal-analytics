@@ -1,7 +1,7 @@
 """Sleeper League API client and data transformers."""
 
-import requests
 import pandas as pd
+import requests
 
 SLEEPER_BASE_URL = "https://api.sleeper.app/v1"
 
@@ -43,3 +43,16 @@ def fetch_league_transactions(league_id: str, round: int) -> list[dict]:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Data transformers
+# ---------------------------------------------------------------------------
+_USER_COLUMNS = ["user_id", "display_name", "league_id"]
+
+
+def parse_users_dataframe(users: list[dict]) -> pd.DataFrame:
+    """Parse raw Sleeper user dicts into a DataFrame."""
+    if not users:
+        return pd.DataFrame(columns=_USER_COLUMNS)
+    return pd.DataFrame(users)[_USER_COLUMNS]

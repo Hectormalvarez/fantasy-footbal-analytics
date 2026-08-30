@@ -10,6 +10,7 @@ from src.league import (
     fetch_league_rosters,
     fetch_league_matchups,
     fetch_league_transactions,
+    parse_users_dataframe,
     SLEEPER_BASE_URL,
 )
 
@@ -193,3 +194,42 @@ def test_fetch_league_transactions_url_includes_round():
         fetch_league_transactions("12345", round=5)
 
     assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/transactions/5"
+
+
+# ---------------------------------------------------------------------------
+# parse_users_dataframe
+# ---------------------------------------------------------------------------
+RAW_USERS = [
+    {"user_id": "u1", "display_name": "Alice", "league_id": "12345", "avatar": "abc"},
+    {"user_id": "u2", "display_name": "Bob", "league_id": "12345", "avatar": "def"},
+    {"user_id": "u3", "display_name": "Charlie", "league_id": "12345", "avatar": "ghi"},
+]
+
+
+def test_parse_users_dataframe_columns():
+    """parse_users_dataframe returns a DataFrame with expected columns."""
+    df = parse_users_dataframe(RAW_USERS)
+    assert isinstance(df, pd.DataFrame)
+    assert "user_id" in df.columns
+    assert "display_name" in df.columns
+    assert "league_id" in df.columns
+
+
+def test_parse_users_dataframe_row_count():
+    """parse_users_dataframe preserves row count from input."""
+    df = parse_users_dataframe(RAW_USERS)
+    assert len(df) == 3
+
+
+def test_parse_users_dataframe_values():
+    """parse_users_dataframe preserves values from input."""
+    df = parse_users_dataframe(RAW_USERS)
+    assert df.iloc[0]["display_name"] == "Alice"
+    assert df.iloc[2]["user_id"] == "u3"
+
+
+def test_parse_users_dataframe_empty():
+    """parse_users_dataframe handles empty input."""
+    df = parse_users_dataframe([])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 0
