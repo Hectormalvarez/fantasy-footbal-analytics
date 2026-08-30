@@ -28,6 +28,7 @@ from src.trade import evaluate_trade
 from src.injuries import extract_roster_injury_status, validate_starting_lineup_health
 from src.dvp import calculate_defensive_rankings, adjust_projections_for_matchup
 from src.simulation import simulate_team_matchup
+from src.reports import generate_weekly_digest, export_digest_markdown, export_power_rankings_csv
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,15 @@ def build_parser() -> argparse.ArgumentParser:
     tp.add_argument("--team-b-sends", type=str, required=True, dest="team_b_sends", help="Comma-separated player IDs team B sends.")
     tp.add_argument("--refresh", action="store_true", default=False, help="Force a fresh Sleeper API download.")
     tp.set_defaults(func=handle_trade)
+
+    # -- report --
+    rp = subs.add_parser("report", help="Generate weekly digest report")
+    rp.add_argument("--league-id", type=str, required=True, dest="league_id", help="Sleeper league ID.")
+    rp.add_argument("--roster-id", type=int, required=True, dest="roster_id", help="Target roster ID.")
+    rp.add_argument("--week", type=int, required=True, help="NFL week number.")
+    rp.add_argument("--output-dir", type=str, default="reports", dest="output_dir", help="Output directory (default: reports).")
+    rp.add_argument("--refresh", action="store_true", default=False, help="Force a fresh Sleeper API download.")
+    rp.set_defaults(func=handle_report)
 
     return parser
 
@@ -526,6 +536,50 @@ def handle_trade(args) -> None:
                 print(f"    Team B sends {name_lookup.get(pid, pid)} {tag}{body}")
 
     print(f"\n{'=' * 60}")
+
+
+# ---------------------------------------------------------------------------
+# Handler: report
+# ---------------------------------------------------------------------------
+def handle_report(args) -> None:
+    """Generate weekly digest and export to Markdown + CSV."""
+    print("Loading projections ...")
+    board = _load_draft_board(refresh=args.refresh)
+    catalog = _load_sleeper_catalog(refresh=args.refresh)
+
+    print("Syncing league rosters ...")
+    rosters = fetch_league_rosters(args.league_id)
+    rosters_df = parse_rosters_dataframe(rosters)
+
+    print(f"Generating Week {args.week} digest for Roster {args.roster_id} ...")
+    digest = generate_weekly_digest(
+        league_id=args.league_id,
+        week=args.week,
+        roster_id=args.roster_id,
+        rosters_df=rosters_df,
+        draft_board_df=board,
+        catalog_df=catalog,
+    )
+
+    # Export Markdown report
+    md_path = os.path.join(
+        args.output_dir,
+        f"week_{args.week}_roster_{args.roster_id}.md",
+    )
+    written = export_digest_markdown(digest, md_path)
+    print(f"  Report saved: {written}")
+
+    # Export power rankings CSV
+    power_df = digest.get("power_rankings", pd.DataFrame())
+    if not power_df.empty:
+        csv_path = os.path.join(
+            args.output_dir,
+            f"week_{args.week}_power_rankings.csv",
+        )
+        csv_written = export_power_rankings_csv(power_df, csv_path)
+        print(f"  Power rankings saved: {csv_written}")
+
+    print(f"\nDigest complete. {len(os.listdir(args.output_dir))} files in {args.output_dir}/")
 
 
 # ---------------------------------------------------------------------------
