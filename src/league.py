@@ -11,3 +11,10 @@ def fetch_league(league_id: str) -> dict:
     resp = requests.get(f"{SLEEPER_BASE_URL}/league/{league_id}", timeout=30)
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_league_users(league_id: str) -> list[dict]:
+    """Fetch all users in a league."""
+    resp = requests.get(f"{SLEEPER_BASE_URL}/league/{league_id}/users", timeout=30)
+    resp.raise_for_status()
+    return resp.json()
