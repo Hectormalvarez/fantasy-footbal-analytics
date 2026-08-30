@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from src.waivers import calculate_marginal_roster_value
+from src.waivers import calculate_marginal_roster_value, rank_drop_candidates
 
 
 # ---------------------------------------------------------------------------
@@ -147,3 +147,53 @@ def test_marginal_value_new_position_baseline_zero():
     row = result.iloc[0]
     assert row["baseline"] == 0.0
     assert row["marginal_value"] == 200.0
+
+
+# ---------------------------------------------------------------------------
+# rank_drop_candidates
+# ---------------------------------------------------------------------------
+def test_drop_candidates_returns_dataframe():
+    """rank_drop_candidates returns a DataFrame."""
+    proj = _proj_df()
+    roster_ids = ["p1", "p2", "p3", "p4", "p5"]
+    result = rank_drop_candidates(roster_ids, proj)
+    assert isinstance(result, pd.DataFrame)
+
+
+def test_drop_candidates_sorted_ascending():
+    """Drop candidates are sorted by proj_points ascending (worst first)."""
+    proj = _proj_df()
+    roster_ids = ["p1", "p2", "p3", "p4", "p5"]
+    result = rank_drop_candidates(roster_ids, proj)
+    assert list(result["proj_points"]) == sorted(result["proj_points"])
+
+
+def test_drop_candidates_columns():
+    """Result contains expected columns."""
+    proj = _proj_df()
+    result = rank_drop_candidates(["p1"], proj)
+    expected = {"player_id", "player_name", "position", "proj_points", "drop_rank"}
+    assert expected == set(result.columns)
+
+
+def test_drop_candidates_drop_rank():
+    """drop_rank is a sequential integer starting at 1."""
+    proj = _proj_df()
+    roster_ids = ["p1", "p2", "p3", "p4", "p5"]
+    result = rank_drop_candidates(roster_ids, proj)
+    assert list(result["drop_rank"]) == list(range(1, len(result) + 1))
+
+
+def test_drop_candidates_empty_roster():
+    """Empty roster returns empty DataFrame."""
+    result = rank_drop_candidates([], _proj_df())
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 0
+
+
+def test_drop_candidates_empty_projections():
+    """Empty projections returns empty DataFrame."""
+    empty_proj = pd.DataFrame(columns=["player_id", "player_name", "position", "proj_points"])
+    result = rank_drop_candidates(["p1"], empty_proj)
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 0

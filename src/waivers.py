@@ -46,3 +46,31 @@ def calculate_marginal_roster_value(
     result = result[result["marginal_value"] > 0].copy()
     result = result.sort_values("marginal_value", ascending=False).reset_index(drop=True)
     return result[["player_id", "player_name", "position", "proj_points", "baseline", "marginal_value"]]
+
+
+def rank_drop_candidates(
+    roster_player_ids: list[str],
+    projections_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Identify the lowest projected assets on the active roster.
+
+    Parameters
+    ----------
+    roster_player_ids : list of Sleeper player_id strings on the manager's roster.
+    projections_df : projection table with at least
+        ``player_id``, ``player_name``, ``position``, ``proj_points``.
+
+    Returns
+    -------
+    DataFrame sorted ascending by ``proj_points`` with an added ``drop_rank``
+    column (1 = most droppable).
+    """
+    if not roster_player_ids or projections_df.empty:
+        return pd.DataFrame(
+            columns=["player_id", "player_name", "position", "proj_points", "drop_rank"]
+        )
+
+    roster = projections_df[projections_df["player_id"].isin(roster_player_ids)].copy()
+    roster = roster.sort_values("proj_points", ascending=True).reset_index(drop=True)
+    roster["drop_rank"] = range(1, len(roster) + 1)
+    return roster[["player_id", "player_name", "position", "proj_points", "drop_rank"]]
