@@ -8,6 +8,7 @@ from src.league import (
     fetch_league,
     fetch_league_users,
     fetch_league_rosters,
+    fetch_league_matchups,
     SLEEPER_BASE_URL,
 )
 
@@ -121,3 +122,38 @@ def test_fetch_league_rosters_url():
         fetch_league_rosters("12345")
 
     assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/rosters"
+
+
+# ---------------------------------------------------------------------------
+# fetch_league_matchups
+# ---------------------------------------------------------------------------
+FAKE_MATCHUPS = [
+    {"roster_id": 1, "matchup_id": 1, "points": 120.5},
+    {"roster_id": 2, "matchup_id": 1, "points": 95.3},
+]
+
+
+def test_fetch_league_matchups_returns_list():
+    """fetch_league_matchups returns a list of matchup dicts."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_MATCHUPS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp):
+        result = fetch_league_matchups("12345", week=1)
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0]["points"] == 120.5
+
+
+def test_fetch_league_matchups_url_includes_week():
+    """fetch_league_matchups includes the week number in the URL."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_MATCHUPS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp) as m:
+        fetch_league_matchups("12345", week=3)
+
+    assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/matchups/3"
