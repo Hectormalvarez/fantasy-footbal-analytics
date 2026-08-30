@@ -68,3 +68,73 @@ def test_simulate_swap_returns_list():
     result = simulate_roster_swap(roster, outgoing_ids=["p2"], incoming_ids=["p3"])
     assert isinstance(result, list)
     assert all(isinstance(pid, str) for pid in result)
+
+
+# ---------------------------------------------------------------------------
+# calculate_starting_lineup_delta
+# ---------------------------------------------------------------------------
+from src.trade import calculate_starting_lineup_delta
+
+
+def _proj_df():
+    """Return a projections DataFrame used for lineup optimization tests."""
+    return pd.DataFrame(
+        {
+            "player_id": ["p1", "p2", "p3", "p4", "p5", "p6"],
+            "player_name": [
+                "Jalen Hurts", "Saquon Barkley", "AJ Brown",
+                "Dallas Goedert", "DeVonta Smith", "Jaylen Waddle",
+            ],
+            "position": ["QB", "RB", "WR", "TE", "WR", "WR"],
+            "proj_points": [25.0, 18.0, 16.0, 10.0, 14.0, 12.0],
+        }
+    )
+
+
+def test_lineup_delta_starter_upgrade():
+    """Replacing a bench WR with a better WR boosts starting lineup."""
+    pre = ["p1", "p2", "p3", "p4", "p6"]  # starter WR: p3(16)
+    post = ["p1", "p2", "p5", "p4", "p6"]  # starter WR: p5(14) → downgrade
+    delta = calculate_starting_lineup_delta(pre, post, _proj_df())
+    assert isinstance(delta, float)
+    assert delta < 0  # starting lineup got worse
+
+
+def test_lineup_delta_bench_only_change():
+    """Bench-only swap does not affect starting lineup delta."""
+    pre = ["p1", "p2", "p3", "p4", "p5", "p6"]
+    # Replace p6(WR, 12) with a new WR "p7"(13) — neither starts with 2-WR slots
+    post = ["p1", "p2", "p3", "p4", "p5", "p7"]
+    proj = _proj_df()
+    proj = pd.concat(
+        [proj, pd.DataFrame({"player_id": ["p7"], "player_name": ["X"],
+                              "position": ["WR"], "proj_points": [13.0]})],
+        ignore_index=True,
+    )
+    slots = ["QB", "RB1", "WR1", "WR2", "TE"]
+    delta = calculate_starting_lineup_delta(pre, post, proj, roster_slots=slots)
+    assert delta == pytest.approx(0.0)
+
+
+def test_lineup_delta_positive_upgrade():
+    """Upgrading a starter yields a positive delta."""
+    pre = ["p1", "p6", "p3", "p4"]     # FLEX: p6(12)
+    post = ["p1", "p5", "p3", "p4"]    # FLEX: p5(14)
+    delta = calculate_starting_lineup_delta(pre, post, _proj_df())
+    assert delta > 0
+
+
+def test_lineup_delta_empty_rosters():
+    """Empty rosters produce zero delta."""
+    delta = calculate_starting_lineup_delta([], [], _proj_df())
+    assert delta == pytest.approx(0.0)
+
+
+def test_lineup_delta_custom_slots():
+    """Custom roster_slots are passed through to optimizer."""
+    pre = ["p1", "p2", "p3", "p4"]
+    post = ["p1", "p2", "p3", "p4"]  # same roster → delta 0
+    slots = ["QB", "RB1", "WR1", "TE"]
+    delta = calculate_starting_lineup_delta(pre, post, _proj_df(), roster_slots=slots)
+    assert delta == pytest.approx(0.0)
+

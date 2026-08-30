@@ -43,3 +43,32 @@ def simulate_roster_swap(
     roster -= set(outgoing_ids)
     roster |= set(incoming_ids)
     return sorted(roster)
+
+
+def calculate_starting_lineup_delta(
+    pre_roster_ids: list[str],
+    post_roster_ids: list[str],
+    projections_df: pd.DataFrame,
+    roster_slots: list[str] | None = None,
+) -> float:
+    """Calculate the net weekly starting PPG change from a trade.
+
+    Uses ``optimize_starting_lineup`` to determine the optimal starters for
+    both the pre-trade and post-trade rosters, then returns the difference
+    in total projected points.
+
+    Parameters
+    ----------
+    pre_roster_ids : Player_id strings on the roster before the trade.
+    post_roster_ids : Player_id strings on the roster after the trade.
+    projections_df : Projection table with at least
+        ``player_id``, ``position``, ``proj_points``.
+    roster_slots : Optional custom slot list passed to the optimizer.
+
+    Returns
+    -------
+    Float representing post-trade starting PPG minus pre-trade starting PPG.
+    """
+    pre = optimize_starting_lineup(pre_roster_ids, projections_df, roster_slots)
+    post = optimize_starting_lineup(post_roster_ids, projections_df, roster_slots)
+    return round(post["total_proj_points"] - pre["total_proj_points"], 2)
