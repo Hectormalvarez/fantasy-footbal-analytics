@@ -7,6 +7,7 @@ from src.waivers import (
     calculate_marginal_roster_value,
     rank_drop_candidates,
     recommend_faab_bids,
+    build_waiver_recommendations,
 )
 
 
@@ -308,3 +309,138 @@ def test_faab_bids_proportional():
     row_high = result[result["player_id"] == "w1"].iloc[0]
     row_low = result[result["player_id"] == "w6"].iloc[0]
     assert row_high["aggressive_bid"] > row_low["aggressive_bid"]
+
+
+# ---------------------------------------------------------------------------
+# build_waiver_recommendations
+# ---------------------------------------------------------------------------
+def _integration_rosters_df():
+    """Sample rosters_df for integration tests (2 managers, 3 teams)."""
+    return pd.DataFrame(
+        {
+            "roster_id": [1, 1, 1, 1, 2, 2, 2, 3],
+            "owner_id": ["u1", "u1", "u1", "u1", "u2", "u2", "u2", "u3"],
+            "player_id": ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"],
+        }
+    )
+
+
+def _integration_draft_board():
+    """Draft board with projections, VORP, and positions."""
+    return pd.DataFrame(
+        {
+            "player_id": [
+                "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8",
+                "w1", "w2", "w3",
+            ],
+            "player_name": [
+                "Hurts", "Barkley", "Brown", "Goedert",
+                "Chase", "Ekeler", "Lamb", "Kelce",
+                "McBride", "Hubbard", "Shaheed",
+            ],
+            "position_proj": [
+                "QB", "RB", "WR", "TE",
+                "WR", "RB", "WR", "TE",
+                "TE", "RB", "WR",
+            ],
+            "proj_points": [
+                340, 280, 250, 150,
+                300, 200, 270, 130,
+                200, 195, 170,
+            ],
+            "vorp": [340, 280, 250, 150, 300, 200, 270, 130, 200, 195, 170],
+        }
+    )
+
+
+def test_build_waiver_recs_returns_dataframe():
+    """build_waiver_recommendations returns a DataFrame."""
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=100,
+    )
+    assert isinstance(result, pd.DataFrame)
+
+
+def test_build_waiver_recs_columns():
+    """Result has the combined column set."""
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=100,
+    )
+    expected = {
+        "player_id",
+        "player_name",
+        "position",
+        "marginal_value",
+        "conservative_bid",
+        "market_bid",
+        "aggressive_bid",
+    }
+    assert expected == set(result.columns)
+
+
+def test_build_waiver_recs_excludes_rostered():
+    """Targets already on any roster are excluded."""
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=100,
+    )
+    all_rostered = {"p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"}
+    assert not set(result["player_id"]).intersection(all_rostered)
+
+
+def test_build_waiver_recs_includes_free_agents():
+    """Free agents from the draft board appear in the result."""
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=100,
+    )
+    assert "w1" in result["player_id"].values
+
+
+def test_build_waiver_recs_empty_roster_id():
+    """Unknown roster_id returns empty DataFrame."""
+    result = build_waiver_recommendations(
+        roster_id=999,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=100,
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 0
+
+
+def test_build_waiver_recs_no_positive_targets():
+    """When no FA improves over the roster baseline, result is empty."""
+    # All waiver players project worse than rostered players
+    draft_board = _integration_draft_board()
+    draft_board.loc[draft_board["player_id"].str.startswith("w"), "proj_points"] = 10
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=draft_board,
+        remaining_faab=100,
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 0
+
+
+def test_build_waiver_recs_faab_bounded():
+    """All bids respect the remaining_faab cap."""
+    result = build_waiver_recommendations(
+        roster_id=1,
+        rosters_df=_integration_rosters_df(),
+        draft_board_df=_integration_draft_board(),
+        remaining_faab=50,
+    )
+    for col in ("conservative_bid", "market_bid", "aggressive_bid"):
+        assert (result[col] <= 50).all()

@@ -135,3 +135,48 @@ def recommend_faab_bids(
             result[col] = result[col].clip(lower=min_bid)
 
     return result[out_cols]
+
+
+def build_waiver_recommendations(
+    roster_id: int,
+    rosters_df: pd.DataFrame,
+    draft_board_df: pd.DataFrame,
+    remaining_faab: int,
+) -> pd.DataFrame:
+    """End-to-end waiver recommendation for a single roster.
+
+    Parameters
+    ----------
+    roster_id : Target roster to evaluate.
+    rosters_df : Exploded roster DataFrame with columns
+        ``roster_id``, ``owner_id``, ``player_id``.
+    draft_board_df : Draft-board DataFrame with columns ``player_id``,
+        ``player_name``, ``position_proj``, ``proj_points`` (and any other
+        VORP columns that may be present).
+    remaining_faab : Manager's remaining FAAB budget.
+
+    Returns
+    -------
+    Merged DataFrame of upgrade candidates with FAAB bids, or an empty
+    DataFrame if no qualifying targets exist.
+    """
+    roster_players = rosters_df[rosters_df["roster_id"] == roster_id]["player_id"].tolist()
+    if not roster_players:
+        return pd.DataFrame()
+
+    all_rostered = set(rosters_df["player_id"].unique())
+    waiver_pool = draft_board_df[~draft_board_df["player_id"].isin(all_rostered)].copy()
+
+    # Normalise the position column for downstream functions
+    proj = draft_board_df.rename(columns={"position_proj": "position"})
+    waiver_pool = waiver_pool.rename(columns={"position_proj": "position"})
+
+    if waiver_pool.empty:
+        return pd.DataFrame()
+
+    upgrades = calculate_marginal_roster_value(roster_players, waiver_pool, proj)
+    if upgrades.empty:
+        return pd.DataFrame()
+
+    bids = recommend_faab_bids(upgrades, remaining_faab)
+    return bids
