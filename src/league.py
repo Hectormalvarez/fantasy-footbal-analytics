@@ -86,3 +86,10 @@ def get_all_rostered_player_ids(rosters: list[dict]) -> set[str]:
     for roster in rosters:
         ids.update(roster.get("players") or [])
     return ids
+
+
+def extract_waiver_wire_pool(
+    all_player_ids: set[str], rostered_ids: set[str]
+) -> set[str]:
+    """Return player IDs not currently on any roster."""
+    return all_player_ids - rostered_ids

@@ -13,6 +13,7 @@ from src.league import (
     parse_users_dataframe,
     parse_rosters_dataframe,
     get_all_rostered_player_ids,
+    extract_waiver_wire_pool,
     SLEEPER_BASE_URL,
 )
 
@@ -300,4 +301,31 @@ def test_get_all_rostered_player_ids_deduplicates():
         {"roster_id": 2, "owner_id": "u2", "players": ["p1", "p2"]},
     ]
     result = get_all_rostered_player_ids(duped)
+    assert result == {"p1", "p2"}
+
+
+# ---------------------------------------------------------------------------
+# extract_waiver_wire_pool
+# ---------------------------------------------------------------------------
+def test_extract_waiver_wire_pool_subtracts_rostered():
+    """extract_waiver_wire_pool returns all_player_ids minus rostered."""
+    all_ids = {"p1", "p2", "p3", "p4"}
+    rostered = {"p1", "p3"}
+    result = extract_waiver_wire_pool(all_ids, rostered)
+    assert result == {"p2", "p4"}
+
+
+def test_extract_waiver_wire_pool_all_rostered():
+    """extract_waiver_wire_pool returns empty set when all players are rostered."""
+    all_ids = {"p1", "p2"}
+    rostered = {"p1", "p2"}
+    result = extract_waiver_wire_pool(all_ids, rostered)
+    assert result == set()
+
+
+def test_extract_waiver_wire_pool_none_rostered():
+    """extract_waiver_wire_pool returns all players when none are rostered."""
+    all_ids = {"p1", "p2"}
+    rostered = set()
+    result = extract_waiver_wire_pool(all_ids, rostered)
     assert result == {"p1", "p2"}
