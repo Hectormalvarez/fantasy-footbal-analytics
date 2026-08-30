@@ -72,3 +72,48 @@ def calculate_starting_lineup_delta(
     pre = optimize_starting_lineup(pre_roster_ids, projections_df, roster_slots)
     post = optimize_starting_lineup(post_roster_ids, projections_df, roster_slots)
     return round(post["total_proj_points"] - pre["total_proj_points"], 2)
+
+
+# Verdict classification thresholds
+_PPG_STRONG_ACCEPT = 5.0
+_VORP_STRONG_ACCEPT = 20.0
+_PPG_SLIGHT_UPGRADE = 1.0
+_VORP_SLIGHT_UPGRADE = 5.0
+_PPG_LATERAL = 0.5
+_VORP_LATERAL = 2.5
+
+
+def classify_trade_verdict(
+    net_starting_delta: float, net_vorp_delta: float
+) -> str:
+    """Categorize trade impact into an actionable recommendation.
+
+    Parameters
+    ----------
+    net_starting_delta : Net change in weekly starting projected PPG.
+    net_vorp_delta : Net change in rest-of-season VORP.
+
+    Returns
+    -------
+    One of: ``"Strong Accept"``, ``"Slight Upgrade"``, ``"Fair Trade"``,
+    ``"Lateral Move"``, ``"Decline / Value Loss"``.
+    """
+    # Both clearly negative → decline
+    if net_starting_delta < 0 and net_vorp_delta < 0:
+        return "Decline / Value Loss"
+
+    # Either side negative (mixed but net-negative impact)
+    if net_starting_delta < 0 or net_vorp_delta < 0:
+        return "Decline / Value Loss"
+
+    # Both positive — classify by magnitude
+    if net_starting_delta >= _PPG_STRONG_ACCEPT and net_vorp_delta >= _VORP_STRONG_ACCEPT:
+        return "Strong Accept"
+
+    if net_starting_delta >= _PPG_SLIGHT_UPGRADE and net_vorp_delta >= _VORP_SLIGHT_UPGRADE:
+        return "Slight Upgrade"
+
+    if net_starting_delta < _PPG_LATERAL and net_vorp_delta < _VORP_LATERAL:
+        return "Lateral Move"
+
+    return "Fair Trade"

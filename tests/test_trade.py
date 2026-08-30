@@ -138,3 +138,44 @@ def test_lineup_delta_custom_slots():
     delta = calculate_starting_lineup_delta(pre, post, _proj_df(), roster_slots=slots)
     assert delta == pytest.approx(0.0)
 
+
+# ---------------------------------------------------------------------------
+# classify_trade_verdict
+# ---------------------------------------------------------------------------
+from src.trade import classify_trade_verdict
+
+
+def test_verdict_strong_accept():
+    """Large positive deltas in both PPG and VORP → Strong Accept."""
+    assert classify_trade_verdict(6.0, 25.0) == "Strong Accept"
+
+
+def test_verdict_slight_upgrade():
+    """Moderate positive → Slight Upgrade."""
+    assert classify_trade_verdict(2.0, 10.0) == "Slight Upgrade"
+
+
+def test_verdict_fair_trade():
+    """Both deltas near zero → Fair Trade."""
+    assert classify_trade_verdict(0.5, 3.0) == "Fair Trade"
+
+
+def test_verdict_lateral_move():
+    """Tiny deltas → Lateral Move."""
+    assert classify_trade_verdict(0.1, 1.0) == "Lateral Move"
+
+
+def test_verdict_decline():
+    """Negative net delta → Decline / Value Loss."""
+    assert classify_trade_verdict(-3.0, -15.0) == "Decline / Value Loss"
+
+
+def test_verdict_boundary_strong_accept():
+    """At exact boundary (5.0 PPG, 20 VORP) → Strong Accept."""
+    assert classify_trade_verdict(5.0, 20.0) == "Strong Accept"
+
+
+def test_verdict_boundary_slight_upgrade():
+    """Just below Strong Accept threshold → Slight Upgrade."""
+    assert classify_trade_verdict(4.9, 19.9) == "Slight Upgrade"
+
