@@ -9,6 +9,7 @@ from src.league import (
     fetch_league_users,
     fetch_league_rosters,
     fetch_league_matchups,
+    fetch_league_transactions,
     SLEEPER_BASE_URL,
 )
 
@@ -157,3 +158,38 @@ def test_fetch_league_matchups_url_includes_week():
         fetch_league_matchups("12345", week=3)
 
     assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/matchups/3"
+
+
+# ---------------------------------------------------------------------------
+# fetch_league_transactions
+# ---------------------------------------------------------------------------
+FAKE_TRANSACTIONS = [
+    {"transaction_id": "t1", "type": "trade", "status": "complete"},
+    {"transaction_id": "t2", "type": "waiver", "status": "complete"},
+]
+
+
+def test_fetch_league_transactions_returns_list():
+    """fetch_league_transactions returns a list of transaction dicts."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_TRANSACTIONS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp):
+        result = fetch_league_transactions("12345", round=1)
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0]["type"] == "trade"
+
+
+def test_fetch_league_transactions_url_includes_round():
+    """fetch_league_transactions includes the round number in the URL."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_TRANSACTIONS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp) as m:
+        fetch_league_transactions("12345", round=5)
+
+    assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/transactions/5"

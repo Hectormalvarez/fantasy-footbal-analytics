@@ -34,3 +34,12 @@ def fetch_league_matchups(league_id: str, week: int) -> list[dict]:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_league_transactions(league_id: str, round: int) -> list[dict]:
+    """Fetch transactions for a given round."""
+    resp = requests.get(
+        f"{SLEEPER_BASE_URL}/league/{league_id}/transactions/{round}", timeout=30
+    )
+    resp.raise_for_status()
+    return resp.json()
