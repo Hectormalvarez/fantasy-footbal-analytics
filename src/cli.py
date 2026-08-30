@@ -27,6 +27,7 @@ from src.matchups import extract_weekly_matchup_roster, optimize_starting_lineup
 from src.trade import evaluate_trade
 from src.injuries import extract_roster_injury_status, validate_starting_lineup_health
 from src.dvp import calculate_defensive_rankings, adjust_projections_for_matchup
+from src.simulation import simulate_team_matchup
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +428,20 @@ def handle_weekly(args) -> None:
             print(f"    {name_lookup.get(pid, pid)}")
 
     print(f"\n  Projected Points: {result['total_proj_points']:.1f}")
+
+    # Monte Carlo win probability
+    team_a_starters = opt_proj[opt_proj["player_id"].isin(result["lineup"].values())].copy()
+    opp_roster_id = matchup_df["opponent_roster_id"].iloc[0] if not matchup_df.empty else None
+    if opp_roster_id is not None:
+        opp_player_ids = matchup_df[matchup_df["opponent_roster_id"] == opp_roster_id]["player_id"].tolist()
+        opp_proj = board[board["player_id"].isin(opp_player_ids)][["player_id", "position_proj", "proj_points"]].copy()
+        opp_proj.rename(columns={"position_proj": "position"}, inplace=True)
+    else:
+        opp_proj = pd.DataFrame(columns=["player_id", "position", "proj_points"])
+
+    sim = simulate_team_matchup(team_a_starters, opp_proj, iterations=5000)
+    print(f"  Win Prob: {sim['win_prob_a'] * 100:.1f}% | Proj: {sim['median_a']:.1f} "
+          f"(10th: {sim['floor_a']:.1f}, 90th: {sim['ceiling_a']:.1f})")
     print(f"{'=' * 62}")
 
     # Starter health validation
