@@ -3,7 +3,9 @@
 import os
 import tempfile
 
-import matplotlib
+import pytest
+
+matplotlib = pytest.importorskip("matplotlib")
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402

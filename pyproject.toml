@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "fantasy-football-analytics"
 version = "0.1.0"
@@ -6,7 +10,6 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
     "numpy>=1.24",
-    "nflreadpy>=0.1",
     "requests>=2.28",
 ]
 
@@ -14,6 +17,18 @@ dependencies = [
 dev = [
     "pytest>=7.0",
 ]
+visuals = [
+    "matplotlib>=3.7",
+]
+all = [
+    "matplotlib>=3.7",
+]
+
+[project.scripts]
+ffa = "src.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
