@@ -25,6 +25,7 @@ from src.league import (
 from src.waivers import build_waiver_recommendations, rank_drop_candidates
 from src.matchups import extract_weekly_matchup_roster, optimize_starting_lineup
 from src.trade import evaluate_trade
+from src.injuries import extract_roster_injury_status, validate_starting_lineup_health
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,14 @@ def _load_draft_board(
     return merged
 
 
+def _load_sleeper_catalog(refresh: bool = False) -> pd.DataFrame:
+    """Load the Sleeper NFL player catalog as a DataFrame."""
+    raw = fetch_sleeper_players(
+        cache_path="data/sleeper_players_raw.json", force_refresh=refresh,
+    )
+    return parse_sleeper_catalog(raw)
+
+
 def _format_contingency_sheet(
     sheet: pd.DataFrame, slot: int, num_teams: int = 14
 ) -> str:
@@ -253,6 +262,7 @@ def handle_waivers(args) -> None:
     """Fetch rosters and run waiver recommendations."""
     print("Loading projections ...")
     board = _load_draft_board(refresh=args.refresh)
+    catalog = _load_sleeper_catalog(refresh=args.refresh)
 
     print("Syncing league rosters ...")
     rosters = fetch_league_rosters(args.league_id)
@@ -268,11 +278,20 @@ def handle_waivers(args) -> None:
     print("\n--- Waiver Upgrades ---")
     print(result.to_string(index=False))
 
+    # Drop candidates with injury tags
     roster_players = rosters_df[rosters_df["roster_id"] == args.roster_id]["player_id"].tolist()
+    injury_df = extract_roster_injury_status(roster_players, catalog)
+    injury_lookup = (
+        dict(zip(injury_df["player_id"], injury_df["injury_tag"]))
+        if not injury_df.empty else {}
+    )
+
     proj = board[["player_id", "player_name", "position_proj", "proj_points"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
     drops = rank_drop_candidates(roster_players, proj)
     if not drops.empty:
+        drops = drops.copy()
+        drops["injury"] = drops["player_id"].map(lambda pid: injury_lookup.get(pid, ""))
         print("\n--- Drop Candidates ---")
         print(drops.to_string(index=False))
 
@@ -289,6 +308,7 @@ def handle_weekly(args) -> None:
     """Optimize starting lineup for a given week."""
     print("Loading projections ...")
     board = _load_draft_board(refresh=args.refresh)
+    catalog = _load_sleeper_catalog(refresh=args.refresh)
 
     print(f"Fetching Week {args.week} matchups ...")
     matchups = fetch_league_matchups(args.league_id, args.week)
@@ -314,6 +334,13 @@ def handle_weekly(args) -> None:
     name_lookup = dict(zip(board["player_id"], board["player_name"]))
     pos_lookup = dict(zip(board["player_id"], board["position_proj"]))
 
+    # Build injury lookup for this roster
+    injury_df = extract_roster_injury_status(roster_ids, catalog)
+    injury_lookup = (
+        dict(zip(injury_df["player_id"], injury_df["injury_tag"]))
+        if not injury_df.empty else {}
+    )
+
     print(f"\n{'=' * 52}")
     print(f"  OPTIMAL LINEUP -- Week {args.week}")
     print(f"{'=' * 52}")
@@ -321,14 +348,25 @@ def handle_weekly(args) -> None:
         pid = result["lineup"][slot]
         name = name_lookup.get(pid, pid)
         pos = pos_lookup.get(pid, "?")
+        tag = injury_lookup.get(pid, "")
         marker = "  <- START" if pid in to_start else ""
-        print(f"  {slot:<6s} {pos:<4s} {name}{marker}")
+        print(f"  {slot:<6s} {pos:<4s} {name}{tag}{marker}")
     if to_sit:
         print("\n  Sit:")
         for pid in to_sit:
             print(f"    {name_lookup.get(pid, pid)}")
     print(f"\n  Projected Points: {result['total_proj_points']:.1f}")
     print(f"{'=' * 52}")
+
+    # Starter health validation
+    starter_rows = matchup_df[matchup_df["is_starter"]]
+    current_lineup = dict(zip(starter_rows["player_name"], starter_rows["player_id"]))
+    warnings = validate_starting_lineup_health(current_lineup, catalog)
+    if warnings:
+        print("\n  INJURY ALERTS:")
+        for w in warnings:
+            body = f" ({w['injury_body_part']})" if w["injury_body_part"] else ""
+            print(f"   * {w['player_name']} [{w['injury_status']}]{body} at {w['slot']}")
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +376,7 @@ def handle_trade(args) -> None:
     """Evaluate a two-way trade proposal."""
     print("Loading projections ...")
     board = _load_draft_board(refresh=args.refresh)
+    catalog = _load_sleeper_catalog(refresh=args.refresh)
 
     print("Syncing league rosters ...")
     rosters = fetch_league_rosters(args.league_id)
@@ -356,6 +395,21 @@ def handle_trade(args) -> None:
         team_a_ids, team_b_ids, team_a_sends, team_b_sends, proj, board,
     )
 
+    # Build injury lookup for both teams
+    all_ids = list(set(team_a_ids + team_b_ids))
+    injury_df = extract_roster_injury_status(all_ids, catalog)
+    injury_lookup = (
+        dict(zip(injury_df["player_id"], injury_df["injury_tag"]))
+        if not injury_df.empty else {}
+    )
+    injury_detail = (
+        dict(zip(injury_df["player_id"], injury_df["injury_body_part"]))
+        if not injury_df.empty else {}
+    )
+
+    # Name lookup for display
+    name_lookup = dict(zip(board["player_id"], board["player_name"]))
+
     print(f"\n{'=' * 60}")
     print("  TRADE EVALUATION")
     print(f"{'=' * 60}")
@@ -366,6 +420,25 @@ def handle_trade(args) -> None:
         print(f"    Starting PPG Delta:  {d['starting_delta']:+.2f}")
         print(f"    ROS VORP Delta:      {d['vorp_delta']:+.2f}")
         print(f"    Verdict: {v}")
+
+    # Injury summary for players involved in the trade
+    trade_pids = team_a_sends + team_b_sends
+    injured_in_trade = [
+        pid for pid in trade_pids if injury_lookup.get(pid)
+    ]
+    if injured_in_trade:
+        print("\n  Injury Status (traded players):")
+        for pid in team_a_sends:
+            tag = injury_lookup.get(pid, "")
+            if tag:
+                body = f" ({injury_detail.get(pid, '')})" if injury_detail.get(pid) else ""
+                print(f"    Team A sends {name_lookup.get(pid, pid)} {tag}{body}")
+        for pid in team_b_sends:
+            tag = injury_lookup.get(pid, "")
+            if tag:
+                body = f" ({injury_detail.get(pid, '')})" if injury_detail.get(pid) else ""
+                print(f"    Team B sends {name_lookup.get(pid, pid)} {tag}{body}")
+
     print(f"\n{'=' * 60}")
 
 
