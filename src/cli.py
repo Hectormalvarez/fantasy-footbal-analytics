@@ -26,6 +26,7 @@ from src.waivers import build_waiver_recommendations, rank_drop_candidates
 from src.matchups import extract_weekly_matchup_roster, optimize_starting_lineup
 from src.trade import evaluate_trade
 from src.injuries import extract_roster_injury_status, validate_starting_lineup_health
+from src.dvp import calculate_defensive_rankings, adjust_projections_for_matchup
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,25 @@ def _load_sleeper_catalog(refresh: bool = False) -> pd.DataFrame:
         cache_path="data/sleeper_players_raw.json", force_refresh=refresh,
     )
     return parse_sleeper_catalog(raw)
+
+
+def _load_weekly_stats(refresh: bool = False) -> pd.DataFrame:
+    """Load weekly NFL player stats for DvP calculations."""
+    cache_path = os.path.join("data", "weekly_stats.csv")
+    if not refresh and os.path.exists(cache_path):
+        return pd.read_csv(cache_path)
+
+    import nflreadpy as nfl
+
+    raw = nfl.load_player_stats(2024, summary_level="week")
+    records = raw.rows(named=True)
+    df = pd.DataFrame(records)
+    if "recent_team" in df.columns:
+        df.rename(columns={"recent_team": "team"}, inplace=True)
+    df = df[df["position"].isin(["QB", "RB", "WR", "TE"])].copy()
+    os.makedirs(os.path.dirname(cache_path) or ".", exist_ok=True)
+    df.to_csv(cache_path, index=False)
+    return df
 
 
 def _format_contingency_sheet(
@@ -310,6 +330,11 @@ def handle_weekly(args) -> None:
     board = _load_draft_board(refresh=args.refresh)
     catalog = _load_sleeper_catalog(refresh=args.refresh)
 
+    # Ensure player_id is available on the board
+    if "player_id" not in board.columns and "norm_name" in board.columns:
+        id_lookup = dict(zip(catalog["norm_name"], catalog["player_id"]))
+        board["player_id"] = board["norm_name"].map(id_lookup)
+
     print(f"Fetching Week {args.week} matchups ...")
     matchups = fetch_league_matchups(args.league_id, args.week)
 
@@ -322,41 +347,87 @@ def handle_weekly(args) -> None:
         return
 
     roster_ids = matchup_df["player_id"].tolist()
-    proj = board[["player_id", "player_name", "position_proj", "proj_points"]].copy()
+
+    # Load DvP data
+    print("Computing DvP rankings ...")
+    dvp_ranks = pd.DataFrame(columns=["team", "position", "defense_rank"])
+    schedule = pd.DataFrame(columns=["team", "opponent_team"])
+    try:
+        weekly_stats = _load_weekly_stats(refresh=args.refresh)
+        dvp_ranks = calculate_defensive_rankings(weekly_stats)
+        week_stats = weekly_stats[weekly_stats["week"] == args.week]
+        schedule = week_stats[["team", "opponent_team"]].drop_duplicates()
+    except Exception as exc:
+        print(f"  (DvP data unavailable: {exc})")
+
+    proj = board[["player_id", "player_name", "position_proj", "proj_points", "team"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
-    result = optimize_starting_lineup(roster_ids, proj)
 
-    current_starters = set(matchup_df[matchup_df["is_starter"]]["player_id"])
-    optimized_starters = set(result["lineup"].values())
-    to_start = optimized_starters - current_starters
-    to_sit = current_starters - optimized_starters
+    # Apply DvP adjustments
+    adj_proj = adjust_projections_for_matchup(proj, schedule, dvp_ranks)
 
+    # Build lookups
     name_lookup = dict(zip(board["player_id"], board["player_name"]))
     pos_lookup = dict(zip(board["player_id"], board["position_proj"]))
+    dvp_lookup = {}
+    for _, row in adj_proj.iterrows():
+        dvp_lookup[row["player_id"]] = {
+            "opponent": row.get("opponent", "BYE"),
+            "defense_rank": int(row.get("defense_rank", 16)),
+            "multiplier": float(row.get("multiplier", 1.0)),
+        }
 
-    # Build injury lookup for this roster
+    # Injury lookup
     injury_df = extract_roster_injury_status(roster_ids, catalog)
     injury_lookup = (
         dict(zip(injury_df["player_id"], injury_df["injury_tag"]))
         if not injury_df.empty else {}
     )
 
-    print(f"\n{'=' * 52}")
+    # Use DvP-adjusted projections for optimization
+    opt_proj = adj_proj[["player_id", "player_name", "position", "adjusted_proj_points"]].copy()
+    opt_proj.rename(columns={"adjusted_proj_points": "proj_points"}, inplace=True)
+    result = optimize_starting_lineup(roster_ids, opt_proj)
+
+    current_starters = set(matchup_df[matchup_df["is_starter"]]["player_id"])
+    optimized_starters = set(result["lineup"].values())
+    to_start = optimized_starters - current_starters
+    to_sit = current_starters - optimized_starters
+
+    print(f"\n{'=' * 62}")
     print(f"  OPTIMAL LINEUP -- Week {args.week}")
-    print(f"{'=' * 52}")
+    print(f"{'=' * 62}")
     for slot in sorted(result["lineup"]):
         pid = result["lineup"][slot]
         name = name_lookup.get(pid, pid)
         pos = pos_lookup.get(pid, "?")
         tag = injury_lookup.get(pid, "")
+        dvp = dvp_lookup.get(pid, {})
+        opp = dvp.get("opponent", "")
+        rank = dvp.get("defense_rank", 16)
+        mult = dvp.get("multiplier", 1.0)
+
+        if opp and opp != "BYE":
+            pct = (mult - 1.0) * 100
+            if pct > 1:
+                dvp_str = f" vs {opp} (#{rank} vs {pos}) [+{pct:.0f}%]"
+            elif pct < -1:
+                dvp_str = f" vs {opp} (#{rank} vs {pos}) [{pct:.0f}%]"
+            else:
+                dvp_str = f" vs {opp} (#{rank} vs {pos})"
+        else:
+            dvp_str = ""
+
         marker = "  <- START" if pid in to_start else ""
-        print(f"  {slot:<6s} {pos:<4s} {name}{tag}{marker}")
+        print(f"  {slot:<6s} {pos:<4s} {name}{tag}{dvp_str}{marker}")
+
     if to_sit:
         print("\n  Sit:")
         for pid in to_sit:
             print(f"    {name_lookup.get(pid, pid)}")
+
     print(f"\n  Projected Points: {result['total_proj_points']:.1f}")
-    print(f"{'=' * 52}")
+    print(f"{'=' * 62}")
 
     # Starter health validation
     starter_rows = matchup_df[matchup_df["is_starter"]]

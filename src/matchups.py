@@ -242,3 +242,29 @@ def compare_sit_start(
         "delta": delta,
         "recommendation": recommendation,
     }
+
+
+def enhance_projections_with_dvp(
+    projections_df: pd.DataFrame,
+    dvp_ranks_df: pd.DataFrame,
+    schedule_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Apply DvP matchup multipliers to player projections.
+
+    Convenience wrapper around :func:`src.dvp.adjust_projections_for_matchup`
+    for use in the matchup optimization flow.
+
+    Parameters
+    ----------
+    projections_df : Player projections with ``player_id``, ``position``,
+        ``team``, ``proj_points``.
+    dvp_ranks_df : DvP rankings with ``team``, ``position``, ``defense_rank``.
+    schedule_df : Weekly schedule with ``team``, ``opponent_team``.
+
+    Returns
+    -------
+    DataFrame with DvP-adjusted projections.
+    """
+    from src.dvp import adjust_projections_for_matchup
+
+    return adjust_projections_for_matchup(projections_df, schedule_df, dvp_ranks_df)
