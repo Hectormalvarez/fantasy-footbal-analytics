@@ -78,3 +78,11 @@ def parse_rosters_dataframe(rosters: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(columns=_ROSTER_COLUMNS)
     return pd.DataFrame(rows)
+
+
+def get_all_rostered_player_ids(rosters: list[dict]) -> set[str]:
+    """Return the union of all player IDs across every roster."""
+    ids: set[str] = set()
+    for roster in rosters:
+        ids.update(roster.get("players") or [])
+    return ids

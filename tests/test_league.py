@@ -12,6 +12,7 @@ from src.league import (
     fetch_league_transactions,
     parse_users_dataframe,
     parse_rosters_dataframe,
+    get_all_rostered_player_ids,
     SLEEPER_BASE_URL,
 )
 
@@ -274,3 +275,29 @@ def test_parse_rosters_dataframe_empty():
     df = parse_rosters_dataframe([])
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# get_all_rostered_player_ids
+# ---------------------------------------------------------------------------
+def test_get_all_rostered_player_ids_returns_set():
+    """get_all_rostered_player_ids returns a set of player_id strings."""
+    result = get_all_rostered_player_ids(RAW_ROSTERS)
+    assert isinstance(result, set)
+    assert result == {"p1", "p2", "p3"}
+
+
+def test_get_all_rostered_player_ids_empty():
+    """get_all_rostered_player_ids returns empty set for empty input."""
+    result = get_all_rostered_player_ids([])
+    assert result == set()
+
+
+def test_get_all_rostered_player_ids_deduplicates():
+    """get_all_rostered_player_ids deduplicates across rosters."""
+    duped = [
+        {"roster_id": 1, "owner_id": "u1", "players": ["p1"]},
+        {"roster_id": 2, "owner_id": "u2", "players": ["p1", "p2"]},
+    ]
+    result = get_all_rostered_player_ids(duped)
+    assert result == {"p1", "p2"}
