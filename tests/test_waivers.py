@@ -3,7 +3,11 @@
 import pandas as pd
 import pytest
 
-from src.waivers import calculate_marginal_roster_value, rank_drop_candidates
+from src.waivers import (
+    calculate_marginal_roster_value,
+    rank_drop_candidates,
+    recommend_faab_bids,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -197,3 +201,110 @@ def test_drop_candidates_empty_projections():
     result = rank_drop_candidates(["p1"], empty_proj)
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 0
+
+
+# ---------------------------------------------------------------------------
+# recommend_faab_bids
+# ---------------------------------------------------------------------------
+def _upgrades_df():
+    """Return a sample upgrades DataFrame (output of marginal_roster_value)."""
+    return pd.DataFrame(
+        {
+            "player_id": ["w1", "w5"],
+            "player_name": ["Trey McBride", "Rachaad White"],
+            "position": ["TE", "RB"],
+            "proj_points": [200.0, 170.0],
+            "baseline": [150.0, 180.0],
+            "marginal_value": [50.0, -10.0],
+        }
+    )
+
+
+def _positive_upgrades_df():
+    """Return only positive marginal-value targets."""
+    return pd.DataFrame(
+        {
+            "player_id": ["w1", "w6"],
+            "player_name": ["Trey McBride", "Rhamondre Stevenson"],
+            "position": ["TE", "RB"],
+            "proj_points": [200.0, 220.0],
+            "baseline": [150.0, 180.0],
+            "marginal_value": [50.0, 40.0],
+        }
+    )
+
+
+def test_faab_bids_returns_dataframe():
+    """recommend_faab_bids returns a DataFrame."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100)
+    assert isinstance(result, pd.DataFrame)
+
+
+def test_faab_bids_columns():
+    """Result contains expected columns."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100)
+    expected = {
+        "player_id",
+        "player_name",
+        "position",
+        "marginal_value",
+        "conservative_bid",
+        "market_bid",
+        "aggressive_bid",
+    }
+    assert expected == set(result.columns)
+
+
+def test_faab_bids_respect_remaining_budget():
+    """No bid tier exceeds remaining_faab."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100)
+    for col in ("conservative_bid", "market_bid", "aggressive_bid"):
+        assert (result[col] <= 100).all()
+
+
+def test_faab_bids_enforce_min_bid():
+    """All bids are at least min_bid."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100, min_bid=5)
+    for col in ("conservative_bid", "market_bid", "aggressive_bid"):
+        assert (result[col] >= 5).all()
+
+
+def test_faab_bids_zero_budget():
+    """With $0 remaining, every bid is $0."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 0, min_bid=0)
+    for col in ("conservative_bid", "market_bid", "aggressive_bid"):
+        assert (result[col] == 0).all()
+
+
+def test_faab_bids_empty_upgrades():
+    """Empty upgrades returns empty DataFrame with correct columns."""
+    result = recommend_faab_bids(
+        pd.DataFrame(
+            columns=[
+                "player_id",
+                "player_name",
+                "position",
+                "proj_points",
+                "baseline",
+                "marginal_value",
+            ]
+        ),
+        100,
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 0
+
+
+def test_faab_bids_tier_ordering():
+    """Conservative <= Market <= Aggressive for every row."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100)
+    assert (result["conservative_bid"] <= result["market_bid"]).all()
+    assert (result["market_bid"] <= result["aggressive_bid"]).all()
+
+
+def test_faab_bids_proportional():
+    """Higher marginal value yields a higher bid at each tier."""
+    result = recommend_faab_bids(_positive_upgrades_df(), 100)
+    row_high = result[result["player_id"] == "w1"].iloc[0]
+    row_low = result[result["player_id"] == "w6"].iloc[0]
+    assert row_high["aggressive_bid"] > row_low["aggressive_bid"]

@@ -74,3 +74,64 @@ def rank_drop_candidates(
     roster = roster.sort_values("proj_points", ascending=True).reset_index(drop=True)
     roster["drop_rank"] = range(1, len(roster) + 1)
     return roster[["player_id", "player_name", "position", "proj_points", "drop_rank"]]
+
+
+def recommend_faab_bids(
+    upgrades_df: pd.DataFrame,
+    remaining_faab: int,
+    min_bid: int = 0,
+) -> pd.DataFrame:
+    """Calculate tiered FAAB bid recommendations scaled to marginal value.
+
+    Parameters
+    ----------
+    upgrades_df : DataFrame output of :func:`calculate_marginal_roster_value`
+        with at least ``player_id``, ``player_name``, ``position``,
+        ``marginal_value`` columns.
+    remaining_faab : Manager's remaining FAAB budget.
+    min_bid : Minimum allowed bid (league floor, often $0).
+
+    Returns
+    -------
+    DataFrame with columns ``player_id``, ``player_name``, ``position``,
+    ``marginal_value``, ``conservative_bid``, ``market_bid``,
+    ``aggressive_bid``.
+    """
+    out_cols = [
+        "player_id",
+        "player_name",
+        "position",
+        "marginal_value",
+        "conservative_bid",
+        "market_bid",
+        "aggressive_bid",
+    ]
+
+    if upgrades_df.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    result = upgrades_df[["player_id", "player_name", "position", "marginal_value"]].copy()
+    total_mv = result["marginal_value"].sum()
+
+    if total_mv <= 0 or remaining_faab <= 0:
+        result["conservative_bid"] = 0
+        result["market_bid"] = 0
+        result["aggressive_bid"] = 0
+    else:
+        shares = result["marginal_value"] / total_mv
+        result["conservative_bid"] = (
+            (shares * remaining_faab * 0.3).clip(lower=min_bid, upper=remaining_faab).round().astype(int)
+        )
+        result["market_bid"] = (
+            (shares * remaining_faab * 0.5).clip(lower=min_bid, upper=remaining_faab).round().astype(int)
+        )
+        result["aggressive_bid"] = (
+            (shares * remaining_faab * 0.7).clip(lower=min_bid, upper=remaining_faab).round().astype(int)
+        )
+
+    # Enforce min_bid when budget exists but total_mv was zero
+    if remaining_faab > 0:
+        for col in ("conservative_bid", "market_bid", "aggressive_bid"):
+            result[col] = result[col].clip(lower=min_bid)
+
+    return result[out_cols]
