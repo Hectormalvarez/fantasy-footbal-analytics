@@ -4,7 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.league import fetch_league, fetch_league_users, SLEEPER_BASE_URL
+from src.league import (
+    fetch_league,
+    fetch_league_users,
+    fetch_league_rosters,
+    SLEEPER_BASE_URL,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -80,3 +85,39 @@ def test_fetch_league_users_url():
         fetch_league_users("12345")
 
     assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/users"
+
+
+# ---------------------------------------------------------------------------
+# fetch_league_rosters
+# ---------------------------------------------------------------------------
+FAKE_ROSTERS = [
+    {"roster_id": 1, "owner_id": "u1", "players": ["p1", "p2"]},
+    {"roster_id": 2, "owner_id": "u2", "players": ["p3"]},
+]
+
+
+def test_fetch_league_rosters_returns_list():
+    """fetch_league_rosters returns a list of roster dicts."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_ROSTERS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp):
+        result = fetch_league_rosters("12345")
+
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert result[0]["roster_id"] == 1
+    mock_resp.raise_for_status.assert_called_once()
+
+
+def test_fetch_league_rosters_url():
+    """fetch_league_rosters constructs the correct URL with /rosters suffix."""
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = FAKE_ROSTERS
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("src.league.requests.get", return_value=mock_resp) as m:
+        fetch_league_rosters("12345")
+
+    assert m.call_args[0][0] == f"{SLEEPER_BASE_URL}/league/12345/rosters"
