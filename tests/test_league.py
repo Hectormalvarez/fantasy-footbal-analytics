@@ -11,6 +11,7 @@ from src.league import (
     fetch_league_matchups,
     fetch_league_transactions,
     parse_users_dataframe,
+    parse_rosters_dataframe,
     SLEEPER_BASE_URL,
 )
 
@@ -231,5 +232,45 @@ def test_parse_users_dataframe_values():
 def test_parse_users_dataframe_empty():
     """parse_users_dataframe handles empty input."""
     df = parse_users_dataframe([])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 0
+
+
+# ---------------------------------------------------------------------------
+# parse_rosters_dataframe
+# ---------------------------------------------------------------------------
+RAW_ROSTERS = [
+    {"roster_id": 1, "owner_id": "u1", "players": ["p1", "p2"]},
+    {"roster_id": 2, "owner_id": "u2", "players": ["p3"]},
+    {"roster_id": 3, "owner_id": "u3", "players": []},
+]
+
+
+def test_parse_rosters_dataframe_explodes_players():
+    """parse_rosters_dataframe creates one row per (roster, player)."""
+    df = parse_rosters_dataframe(RAW_ROSTERS)
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 3  # 2 + 1 + 0
+
+
+def test_parse_rosters_dataframe_columns():
+    """parse_rosters_dataframe returns expected columns."""
+    df = parse_rosters_dataframe(RAW_ROSTERS)
+    assert "roster_id" in df.columns
+    assert "owner_id" in df.columns
+    assert "player_id" in df.columns
+
+
+def test_parse_rosters_dataframe_values():
+    """parse_rosters_dataframe preserves correct roster-player pairing."""
+    df = parse_rosters_dataframe(RAW_ROSTERS)
+    row = df[df["player_id"] == "p2"].iloc[0]
+    assert row["roster_id"] == 1
+    assert row["owner_id"] == "u1"
+
+
+def test_parse_rosters_dataframe_empty():
+    """parse_rosters_dataframe handles empty input."""
+    df = parse_rosters_dataframe([])
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0

@@ -56,3 +56,25 @@ def parse_users_dataframe(users: list[dict]) -> pd.DataFrame:
     if not users:
         return pd.DataFrame(columns=_USER_COLUMNS)
     return pd.DataFrame(users)[_USER_COLUMNS]
+
+
+_ROSTER_COLUMNS = ["roster_id", "owner_id", "player_id"]
+
+
+def parse_rosters_dataframe(rosters: list[dict]) -> pd.DataFrame:
+    """Parse raw Sleeper roster dicts into an exploded DataFrame.
+
+    Each roster's ``players`` list is exploded so that one row equals
+    one ``(roster_id, owner_id, player_id)`` triple.
+    """
+    rows: list[dict] = []
+    for roster in rosters:
+        for player_id in roster.get("players") or []:
+            rows.append({
+                "roster_id": roster["roster_id"],
+                "owner_id": roster["owner_id"],
+                "player_id": player_id,
+            })
+    if not rows:
+        return pd.DataFrame(columns=_ROSTER_COLUMNS)
+    return pd.DataFrame(rows)
