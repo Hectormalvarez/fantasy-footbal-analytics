@@ -139,15 +139,23 @@ def render_arbitrage_scatter(
     if output_path is None:
         output_path = "data/market_arbitrage.png"
 
-    df = board_df[board_df["vorp_rank"] <= top_n].copy()
+    df = board_df.copy()
+    df["search_rank"] = pd.to_numeric(df["search_rank"], errors="coerce")
+    df["vorp_rank"] = pd.to_numeric(df["vorp_rank"], errors="coerce")
+    df["vorp"] = pd.to_numeric(df.get("vorp", 0), errors="coerce")
+    df = df.dropna(subset=["search_rank", "vorp_rank"])
+
+    # Only plot players with real Sleeper ADP data (< 9999 = unmatched fill)
+    # and positive VORP, since those are the only meaningful arbitrage signals.
+    df = df[(df["search_rank"] < 9999) & (df["vorp"] > 0)].copy()
+
+    # Then take the top N by VORP rank among the filtered set
+    df = df[df["vorp_rank"] <= top_n].copy()
+
     if df.empty:
         fig, ax = plt.subplots()
         ax.set_title("No data")
         return fig
-
-    df["search_rank"] = pd.to_numeric(df["search_rank"], errors="coerce")
-    df["vorp_rank"] = pd.to_numeric(df["vorp_rank"], errors="coerce")
-    df = df.dropna(subset=["search_rank", "vorp_rank"])
 
     fig, ax = plt.subplots(figsize=(12, 10))
 
