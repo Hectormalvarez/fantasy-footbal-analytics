@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # -- draft --
     dp = subs.add_parser("draft", help="Pre-draft contingency matrix generation")
-    dp.add_argument("--slot", type=int, required=True, help="Assigned draft slot (1-14).")
+    dp.add_argument("--slot", type=int, required=True, choices=range(1, 15), help="Assigned draft slot (1-14).")
     dp.add_argument("--refresh", action="store_true", default=False, help="Force a fresh Sleeper API download.")
     dp.add_argument("--rounds", type=int, default=15, help="Draft depth in rounds (default: 15).")
     dp.add_argument("--reach-buffer", type=int, default=4, dest="reach_buffer", help="Max picks to reach ahead of ADP (default: 4).")
@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     wk.add_argument("--roster-id", type=int, required=True, dest="roster_id", help="Target roster ID.")
     wk.add_argument("--week", type=int, required=True, help="NFL week number.")
     wk.add_argument("--refresh", action="store_true", default=False, help="Force a fresh Sleeper API download.")
+    wk.add_argument("--visuals", action="store_true", default=False, help="Generate lineup visualizations (PNG).")
     wk.set_defaults(func=handle_weekly)
 
     # -- trade --
@@ -89,6 +90,27 @@ def build_parser() -> argparse.ArgumentParser:
     rp.set_defaults(func=handle_report)
 
     return parser
+
+
+# ---------------------------------------------------------------------------
+# Abbreviation key builder
+# ---------------------------------------------------------------------------
+def _make_abbrev_key(name: str) -> str:
+    """Build an abbreviation-style key from a full player name.
+
+    "Lamar Jackson" -> "l.jackson"
+    "Ja'Marr Chase" -> "j.chase"
+    "Bijan Robinson" -> "b.robinson"
+
+    This lets us match nflreadpy's ``player_name`` format ("L.Jackson")
+    against the Sleeper catalog's full names.
+    """
+    parts = name.strip().split()
+    if len(parts) < 2:
+        return clean_player_name(name)
+    first_initial = parts[0][0].lower()
+    last_name = parts[-1].lower()
+    return f"{first_initial}.{last_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +137,35 @@ def _load_draft_board(
         suffixes=("", "_sleeper"),
     )
 
+    # --- Secondary merge for abbreviated names ---
+    # nflreadpy stores names like "L.Jackson" while Sleeper has "Lamar Jackson".
+    # Build a fallback lookup: "l.jackson" -> catalog row, then match remaining NaN rows.
+    unmatched = merged["player_id"].isna()
+    if unmatched.any():
+        # Build abbreviation key from catalog: "l.jackson" -> catalog entry
+        # If multiple catalog players share the same abbreviation+position,
+        # keep the one with the best (lowest) search_rank.
+        cat_abbrev = catalog_rank.copy()
+        cat_abbrev["_abbrev"] = cat_abbrev["player_name"].apply(
+            lambda n: _make_abbrev_key(n)
+        )
+        cat_abbrev = cat_abbrev.sort_values("search_rank").drop_duplicates(
+            subset=["_abbrev", "position"], keep="first",
+        )
+        abbrev_lookup = cat_abbrev.set_index(["_abbrev", "position"])[
+            ["search_rank", "team", "player_id"]
+        ].to_dict("index")
+
+        for idx in merged.index[unmatched]:
+            row = merged.loc[idx]
+            key = (row["norm_name"], row["position"])
+            if key in abbrev_lookup:
+                info = abbrev_lookup[key]
+                merged.loc[idx, "player_id"] = info["player_id"]
+                merged.loc[idx, "team"] = info.get("team", "")
+                if pd.isna(merged.loc[idx, "search_rank"]) or merged.loc[idx, "search_rank"] == 9999:
+                    merged.loc[idx, "search_rank"] = info.get("search_rank", 9999)
+
     merged["search_rank"] = merged["search_rank"].fillna(9999)
     merged["team"] = merged.get("team_sleeper", merged.get("team", "")).fillna("")
     if "team_sleeper" in merged.columns:
@@ -137,6 +188,13 @@ def _load_draft_board(
     merged["vorp"] = merged["proj_points"] - merged["baseline"]
 
     merged["vorp_rank"] = merged["vorp"].rank(ascending=False, method="min").astype(int)
+    # Deduplicate: if both "J.Chase" and "Ja'Marr Chase" resolved to the same
+    # player_id, keep the row with the higher projection (the imputed version).
+    if merged["player_id"].notna().any():
+        merged = merged.sort_values("proj_points", ascending=False).drop_duplicates(
+            subset=["player_id"], keep="first",
+        )
+
     merged = merged.sort_values("vorp", ascending=False).reset_index(drop=True)
 
     merged["pos_label"] = (
@@ -300,7 +358,10 @@ def handle_waivers(args) -> None:
     rosters_df = parse_rosters_dataframe(rosters)
 
     print(f"Building waiver recommendations for roster {args.roster_id} ...")
-    result = build_waiver_recommendations(args.roster_id, rosters_df, board, args.faab)
+    # Convert season-long (17-game) projections to weekly for display
+    board_weekly = board.copy()
+    board_weekly["proj_points"] = board_weekly["proj_points"] / 17.0
+    result = build_waiver_recommendations(args.roster_id, rosters_df, board_weekly, args.faab)
 
     if result.empty:
         print("No qualifying waiver targets found.")
@@ -317,7 +378,7 @@ def handle_waivers(args) -> None:
         if not injury_df.empty else {}
     )
 
-    proj = board[["player_id", "player_name", "position_proj", "proj_points"]].copy()
+    proj = board_weekly[["player_id", "player_name", "position_proj", "proj_points"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
     drops = rank_drop_candidates(roster_players, proj)
     if not drops.empty:
@@ -495,6 +556,8 @@ def handle_trade(args) -> None:
 
     proj = board[["player_id", "player_name", "position_proj", "proj_points"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
+    # Convert season-long (17-game) projections to weekly
+    proj["proj_points"] = proj["proj_points"] / 17.0
 
     result = evaluate_trade(
         team_a_ids, team_b_ids, team_a_sends, team_b_sends, proj, board,
