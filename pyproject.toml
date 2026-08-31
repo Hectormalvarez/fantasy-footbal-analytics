@@ -33,3 +33,6 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "network: marks tests that require live Sleeper API access (deselect with '-m not network')",
+]
