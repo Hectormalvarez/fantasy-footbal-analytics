@@ -105,12 +105,12 @@ def _load_draft_board(
     raw_sleeper = fetch_sleeper_players(cache_path=sleeper_cache, force_refresh=refresh)
     catalog = parse_sleeper_catalog(raw_sleeper)
 
-    catalog_rank = catalog[["player_name", "position", "search_rank", "team"]].copy()
+    catalog_rank = catalog[["player_name", "position", "search_rank", "team", "player_id"]].copy()
     catalog_rank["norm_name"] = catalog_rank["player_name"].apply(clean_player_name)
     projections["norm_name"] = projections["player_name"].apply(clean_player_name)
 
     merged = projections.merge(
-        catalog_rank[["norm_name", "position", "search_rank", "team"]],
+        catalog_rank[["norm_name", "position", "search_rank", "team", "player_id"]],
         on=["norm_name", "position"], how="left",
         suffixes=("", "_sleeper"),
     )
@@ -379,6 +379,12 @@ def handle_weekly(args) -> None:
 
     # Build lookups
     name_lookup = dict(zip(board["player_id"], board["player_name"]))
+    # Fallback: add names from matchup_df for players not on the board
+    if not matchup_df.empty:
+        matchup_names = dict(zip(matchup_df["player_id"], matchup_df["player_name"]))
+        for pid, pname in matchup_names.items():
+            if pid not in name_lookup:
+                name_lookup[pid] = pname
     pos_lookup = dict(zip(board["player_id"], board["position_proj"]))
     dvp_lookup = {}
     for _, row in adj_proj.iterrows():
@@ -443,9 +449,10 @@ def handle_weekly(args) -> None:
     team_a_starters = opt_proj[opt_proj["player_id"].isin(result["lineup"].values())].copy()
     opp_roster_id = matchup_df["opponent_roster_id"].iloc[0] if not matchup_df.empty else None
     if opp_roster_id is not None:
-        opp_player_ids = matchup_df[matchup_df["opponent_roster_id"] == opp_roster_id]["player_id"].tolist()
-        opp_proj = board[board["player_id"].isin(opp_player_ids)][["player_id", "position_proj", "proj_points"]].copy()
-        opp_proj.rename(columns={"position_proj": "position"}, inplace=True)
+        opp_matchup_df = extract_weekly_matchup_roster(opp_roster_id, matchups, player_pool)
+        opp_roster_ids = opp_matchup_df[opp_matchup_df["is_starter"]]["player_id"].tolist()
+        opp_proj = adj_proj[adj_proj["player_id"].isin(opp_roster_ids)][["player_id", "position", "adjusted_proj_points"]].copy()
+        opp_proj.rename(columns={"adjusted_proj_points": "proj_points"}, inplace=True)
     else:
         opp_proj = pd.DataFrame(columns=["player_id", "position", "proj_points"])
 

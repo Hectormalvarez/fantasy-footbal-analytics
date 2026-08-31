@@ -88,11 +88,11 @@ def generate_weekly_digest(
         "floor_a": 0.0, "ceiling_a": 0.0,
     }
     if opponent_id is not None:
-        opp_player_ids = (
-            matchup_df[matchup_df["opponent_roster_id"] == opponent_id]["player_id"]
-            .tolist()
+        opp_matchup_df = extract_weekly_matchup_roster(
+            opponent_id, matchups_raw, player_pool,
         )
-        opp_proj = board[board["player_id"].isin(opp_player_ids)][[
+        opp_roster_ids = opp_matchup_df[opp_matchup_df["is_starter"]]["player_id"].tolist()
+        opp_proj = board[board["player_id"].isin(opp_roster_ids)][[
             "player_id", "position_proj", "proj_points",
         ]].copy()
         opp_proj.rename(columns={"position_proj": "position"}, inplace=True)
@@ -125,6 +125,9 @@ def generate_weekly_digest(
             if not rank_row.empty:
                 my_rank = int(rank_row.iloc[0]["power_rank"])
 
+    # Build name lookup for markdown export
+    name_lookup = dict(zip(board["player_id"], board["player_name"]))
+
     return {
         "league_id": league_id,
         "week": week,
@@ -138,6 +141,7 @@ def generate_weekly_digest(
         "injury_warnings": injury_warnings,
         "power_rankings": power_df,
         "roster_power_rank": my_rank,
+        "player_name_lookup": name_lookup,
     }
 
 
@@ -194,6 +198,7 @@ def export_digest_markdown(
     lines.append("")
     total = digest_data.get("total_proj_points", 0.0)
     lineup = optimal.get("lineup", {})
+    name_lookup = digest_data.get("player_name_lookup", {})
     if lineup:
         lines.append(f"**Total Projected:** {total:.1f} pts")
         lines.append("")
@@ -201,12 +206,7 @@ def export_digest_markdown(
         lines.append("|------|--------|")
         for slot in sorted(lineup):
             pid = lineup[slot]
-            name_lookup = {
-                r["player_id"]: r["player_name"]
-                for r in (optimal.get("bench", []) or [])
-            }
-            # Try to find name from the digest context
-            name = pid
+            name = name_lookup.get(pid, pid)
             lines.append(f"| {slot} | {name} |")
     else:
         lines.append("No optimal lineup available.")
