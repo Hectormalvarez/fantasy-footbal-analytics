@@ -16,6 +16,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "nbformat>=5.7",
+    "nbconvert>=7.0",
 ]
 visuals = [
     "matplotlib>=3.7",
