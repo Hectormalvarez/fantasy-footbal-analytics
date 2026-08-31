@@ -167,9 +167,11 @@ def _load_draft_board(
                     merged.loc[idx, "search_rank"] = info.get("search_rank", 9999)
 
     merged["search_rank"] = merged["search_rank"].fillna(9999)
-    merged["team"] = merged.get("team_sleeper", merged.get("team", "")).fillna("")
+    # Use team_sleeper where available, but keep original team as fallback
     if "team_sleeper" in merged.columns:
+        merged["team"] = merged["team_sleeper"].fillna(merged["team"])
         merged.drop(columns=["team_sleeper"], inplace=True, errors="ignore")
+    merged["team"] = merged["team"].fillna("")
 
     merged.rename(columns={"position": "position_proj"}, inplace=True)
 

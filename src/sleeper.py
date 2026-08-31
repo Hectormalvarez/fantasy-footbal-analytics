@@ -77,18 +77,24 @@ def parse_sleeper_catalog(
     pd.DataFrame with player_name, norm_name, norm_position, and raw Sleeper fields.
     """
     if positions is None:
-        positions = ["QB", "RB", "WR", "TE"]
+        positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
 
     df = pd.DataFrame.from_dict(raw_data, orient="index")
     df = df.reset_index(drop=True)
 
     # Filter to skill positions + active status
     df = df[df["position"].isin(positions)].copy()
-    df = df[df["status"] == "Active"].copy()
+    # Keep Active status OR players with no status (DEF entries lack status)
+    df = df[(df["status"] == "Active") | (df["status"].isna())].copy()
 
     # Rename full_name -> player_name for consistency with nflreadpy
     if "full_name" in df.columns and "player_name" not in df.columns:
         df.rename(columns={"full_name": "player_name"}, inplace=True)
+
+    # Fill missing player_name for DEF/K entries that lack full_name
+    if "player_name" in df.columns:
+        df["player_name"] = df["player_name"].fillna(df.get("first_name", pd.Series(dtype=str)))
+        df["player_name"] = df["player_name"].fillna(df["player_id"].astype(str))
 
     # Add normalization columns
     df["norm_name"] = df["player_name"].apply(clean_player_name)

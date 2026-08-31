@@ -7,11 +7,21 @@ import pandas as pd
 # Default roster slots for a standard 1QB league
 DEFAULT_SLOTS = [
     "QB", "RB1", "RB2", "WR1", "WR2", "WR3",
-    "TE", "FLEX", "BN", "BN", "BN", "BN", "BN", "BN", "BN",
+    "TE", "FLEX", "K", "DST", "BN", "BN", "BN", "BN", "BN", "BN",
 ]
 
 # Positions eligible for the FLEX slot (RB/WR/TE)
 FLEX_ELIGIBLE = {"RB", "WR", "TE"}
+
+# Position -> slot mapping for non-FLEX, non-BN slots
+_SLOT_POSITION_MAP = {
+    "QB": "QB",
+    "RB1": "RB", "RB2": "RB",
+    "WR1": "WR", "WR2": "WR", "WR3": "WR",
+    "TE": "TE",
+    "K": "K",
+    "DST": "DEF",
+}
 
 
 def extract_weekly_matchup_roster(
@@ -139,14 +149,13 @@ def optimize_starting_lineup(
     players.sort(key=lambda x: x["proj"], reverse=True)
 
     # Classify slots
-    position_slots: list[str] = []  # QB, RB1, RB2, WR1, WR2, WR3, TE
+    position_slots: list[str] = []  # QB, RB1, RB2, WR1, WR2, WR3, TE, K, DST
     flex_slots: list[str] = []
     bench_slots: list[str] = []
     for slot in roster_slots:
-        base = slot.rstrip("0123456789")
         if slot == "FLEX":
             flex_slots.append(slot)
-        elif base in {"QB", "RB", "WR", "TE"}:
+        elif slot in _SLOT_POSITION_MAP:
             position_slots.append(slot)
         else:
             bench_slots.append(slot)
@@ -156,9 +165,9 @@ def optimize_starting_lineup(
     lineup: dict[str, str] = {}
 
     for slot in position_slots:
-        base_pos = slot.rstrip("0123456789")
+        target_pos = _SLOT_POSITION_MAP[slot]
         for p in players:
-            if p["player_id"] not in used and p["position"] == base_pos:
+            if p["player_id"] not in used and p["position"] == target_pos:
                 lineup[slot] = p["player_id"]
                 used.add(p["player_id"])
                 break
