@@ -373,6 +373,8 @@ def handle_weekly(args) -> None:
 
     proj = board[["player_id", "player_name", "position_proj", "proj_points", "team"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
+    # Convert season-long (17-game) projections to weekly
+    proj["proj_points"] = proj["proj_points"] / 17.0
 
     # Apply DvP adjustments
     adj_proj = adjust_projections_for_matchup(proj, schedule, dvp_ranks)

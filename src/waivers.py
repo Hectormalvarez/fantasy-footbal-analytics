@@ -101,6 +101,7 @@ def recommend_faab_bids(
         "player_id",
         "player_name",
         "position",
+        "proj_points",
         "marginal_value",
         "conservative_bid",
         "market_bid",
@@ -110,7 +111,7 @@ def recommend_faab_bids(
     if upgrades_df.empty:
         return pd.DataFrame(columns=out_cols)
 
-    result = upgrades_df[["player_id", "player_name", "position", "marginal_value"]].copy()
+    result = upgrades_df[["player_id", "player_name", "position", "proj_points", "marginal_value"]].copy()
     total_mv = result["marginal_value"].sum()
 
     if total_mv <= 0 or remaining_faab <= 0:

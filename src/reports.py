@@ -73,6 +73,8 @@ def generate_weekly_digest(
     # --- Optimal Lineup ---
     proj = board[["player_id", "player_name", "position_proj", "proj_points"]].copy()
     proj.rename(columns={"position_proj": "position"}, inplace=True)
+    # Convert season-long (17-game) projections to weekly
+    proj["proj_points"] = proj["proj_points"] / 17.0
     roster_ids = matchup_df["player_id"].tolist() if not matchup_df.empty else []
     optimal = optimize_starting_lineup(roster_ids, proj)
 
@@ -92,10 +94,9 @@ def generate_weekly_digest(
             opponent_id, matchups_raw, player_pool,
         )
         opp_roster_ids = opp_matchup_df[opp_matchup_df["is_starter"]]["player_id"].tolist()
-        opp_proj = board[board["player_id"].isin(opp_roster_ids)][[
-            "player_id", "position_proj", "proj_points",
+        opp_proj = proj[proj["player_id"].isin(opp_roster_ids)][[
+            "player_id", "position", "proj_points",
         ]].copy()
-        opp_proj.rename(columns={"position_proj": "position"}, inplace=True)
         team_a = proj[proj["player_id"].isin(optimal["lineup"].values())].copy()
         sim_result = simulate_team_matchup(team_a, opp_proj, iterations=3000)
 
@@ -103,8 +104,11 @@ def generate_weekly_digest(
     waivers_df = pd.DataFrame()
     drops_df = pd.DataFrame()
     if roster_ids:
+        # Use weekly projections for waiver recommendations
+        board_weekly = board.copy()
+        board_weekly["proj_points"] = board_weekly["proj_points"] / 17.0
         waivers_df = build_waiver_recommendations(
-            roster_id, rosters_df, board, remaining_faab=100,
+            roster_id, rosters_df, board_weekly, remaining_faab=100,
         )
         drops_df = rank_drop_candidates(roster_ids, proj)
 
