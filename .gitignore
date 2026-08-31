@@ -1,4 +1,37 @@
-venv/
+# Python
 __pycache__/
-.ipynb_checkpoints/
+*.pyc
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Testing / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Project output
 data/
+reports/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.*
