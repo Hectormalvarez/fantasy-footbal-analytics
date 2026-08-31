@@ -147,6 +147,10 @@ def adjust_projections_for_matchup(
         if not schedule_df.empty and "team" in schedule_df.columns
         else pd.DataFrame(columns=["team", "opponent_team"])
     )
+    # Strip whitespace from team names (schedule data may have leading spaces)
+    sched["team"] = sched["team"].str.strip()
+    sched["opponent_team"] = sched["opponent_team"].str.strip()
+    result["team"] = result["team"].str.strip()
     result = result.merge(sched, on="team", how="left")
     result["opponent"] = result["opponent_team"].fillna("BYE")
     result.drop(columns=["opponent_team"], errors="ignore", inplace=True)
