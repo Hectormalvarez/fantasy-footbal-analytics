@@ -36,3 +36,17 @@ def test_rosters_timeout() -> None:
     assert result.exit_code == 1
     assert "error:" in result.output
     assert "12345" in result.output
+
+
+def test_rosters_non_200() -> None:
+    """Non-200 HTTP response is written to stderr and exit code is 1."""
+    fake_response = Mock(spec=requests.Response, ok=False)
+    fake_response.status_code = 404
+
+    with patch("sleeper.requests.get", return_value=fake_response):
+        result = runner.invoke(app, ["rosters", "12345"])
+
+    assert result.exit_code == 1
+    assert "error:" in result.output
+    assert "404" in result.output
+    assert "12345" in result.output
