@@ -15,6 +15,9 @@ dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
+[project.scripts]
+sleeper-cli = "cli:app"
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"
