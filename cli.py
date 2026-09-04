@@ -22,4 +22,12 @@ def rosters(league_id: str) -> None:
         )
         raise typer.Exit(code=1)
 
+    if not response.ok:
+        print(
+            f"error: request failed with HTTP {response.status_code} "
+            f"for league '{league_id}'",
+            file=sys.stderr,
+        )
+        raise typer.Exit(code=1)
+
     sys.stdout.write(response.text)
