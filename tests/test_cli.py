@@ -23,3 +23,16 @@ def test_rosters_success() -> None:
 
     assert result.exit_code == 0
     assert result.output == '[{"roster_id":1,"owner_id":"123"}]'
+
+
+def test_rosters_timeout() -> None:
+    """Timeout error is written to stderr and exit code is 1."""
+    with patch(
+        "sleeper.requests.get",
+        side_effect=requests.ConnectionError("Connection refused"),
+    ):
+        result = runner.invoke(app, ["rosters", "12345"])
+
+    assert result.exit_code == 1
+    assert "error:" in result.output
+    assert "12345" in result.output
